@@ -1,5 +1,7 @@
+import { useState } from 'react'
+import { api } from '../api/client'
 import type { JarvisStatus, BudgetStatus, MemoryStats, WSMessage } from '../types'
-import { Activity, Target, Zap, Database, DollarSign, Clock, Flag, Compass, Star } from 'lucide-react'
+import { Activity, Target, Zap, Database, DollarSign, Clock, Flag, Compass, Star, Timer, Bell } from 'lucide-react'
 
 interface Props {
   status: JarvisStatus | null
@@ -102,21 +104,119 @@ export function Dashboard({ status, budget, memory, lastMessage }: Props) {
           )}
         </Card>
 
-        <Card title="Last Update" icon={<Clock size={16} />} color="cyan">
-          {lastMessage ? (
-            <div className="space-y-1">
-              <p className="text-sm text-gray-200">{lastMessage.status || lastMessage.type}</p>
-              <p className="text-xs text-gray-500">{lastMessage.timestamp ? new Date(lastMessage.timestamp).toLocaleString() : ''}</p>
-            </div>
-          ) : (
-            <p className="text-gray-500 text-sm">Waiting for updates...</p>
-          )}
+        <Card title="Iteration Speed" icon={<Timer size={16} />} color="cyan">
+          <IterationSpeedDisplay
+            sleepSeconds={status?.current_sleep_seconds}
+            lastMessage={lastMessage}
+          />
         </Card>
 
         <Card title="Directive" icon={<Zap size={16} />} color="yellow">
           <p className="text-sm text-gray-300 line-clamp-4">{status?.directive || 'Loading...'}</p>
         </Card>
       </div>
+    </div>
+  )
+}
+
+function formatDuration(seconds: number | undefined | null): string {
+  if (!seconds && seconds !== 0) return '—'
+  if (seconds < 60) return `${Math.round(seconds)}s`
+  if (seconds < 3600) {
+    const m = Math.floor(seconds / 60)
+    const s = Math.round(seconds % 60)
+    return s > 0 ? `${m}m ${s}s` : `${m}m`
+  }
+  const h = Math.floor(seconds / 3600)
+  const m = Math.round((seconds % 3600) / 60)
+  return m > 0 ? `${h}h ${m}m` : `${h}h`
+}
+
+function sleepLabel(seconds: number | undefined | null): { text: string; color: string } {
+  if (!seconds && seconds !== 0) return { text: 'Unknown', color: 'gray' }
+  if (seconds <= 30) return { text: 'Sprinting', color: 'green' }
+  if (seconds <= 120) return { text: 'Active', color: 'blue' }
+  if (seconds <= 600) return { text: 'Idle', color: 'yellow' }
+  return { text: 'Deep Sleep', color: 'orange' }
+}
+
+function IterationSpeedDisplay({
+  sleepSeconds,
+  lastMessage,
+}: {
+  sleepSeconds?: number
+  lastMessage: WSMessage | null
+}) {
+  const [waking, setWaking] = useState(false)
+
+  // Use the WebSocket next_wake_seconds if available (more real-time)
+  const displaySleep = lastMessage?.next_wake_seconds != null
+    ? (lastMessage.next_wake_seconds as number)
+    : sleepSeconds
+
+  const label = sleepLabel(displaySleep)
+
+  const handleWake = async () => {
+    setWaking(true)
+    try {
+      await api.wake()
+    } catch {}
+    setTimeout(() => setWaking(false), 2000)
+  }
+
+  // Visual bar: map sleep to 0-100% where 10s=0%, 3600s=100%
+  const barPct = displaySleep != null
+    ? Math.min(100, Math.max(0, ((displaySleep - 10) / (3600 - 10)) * 100))
+    : 0
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between">
+        <p className="text-2xl font-bold text-cyan-400">{formatDuration(displaySleep)}</p>
+        <span className={`text-xs font-medium px-2 py-0.5 rounded-full bg-${label.color}-500/20 text-${label.color}-400`}>
+          {label.text}
+        </span>
+      </div>
+
+      <p className="text-xs text-gray-500">between iterations (JARVIS-controlled)</p>
+
+      {/* Sleep duration bar */}
+      <div className="w-full bg-gray-800 rounded-full h-1.5 mt-1">
+        <div
+          className={`h-1.5 rounded-full transition-all duration-500 ${
+            barPct < 10 ? 'bg-green-500' : barPct < 30 ? 'bg-blue-500' : barPct < 60 ? 'bg-yellow-500' : 'bg-orange-500'
+          }`}
+          style={{ width: `${barPct}%` }}
+        />
+      </div>
+      <div className="flex justify-between text-[10px] text-gray-600">
+        <span>10s</span>
+        <span>1m</span>
+        <span>10m</span>
+        <span>1h</span>
+      </div>
+
+      {/* Last WS update */}
+      {lastMessage?.timestamp && (
+        <p className="text-[11px] text-gray-600 mt-1">
+          Last update: {new Date(lastMessage.timestamp).toLocaleTimeString()}
+          {lastMessage.status && ` · ${lastMessage.status}`}
+        </p>
+      )}
+
+      {/* Wake button */}
+      <button
+        onClick={handleWake}
+        disabled={waking}
+        className={`w-full mt-1 flex items-center justify-center gap-2 px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+          waking
+            ? 'bg-cyan-900/30 text-cyan-600 cursor-not-allowed'
+            : 'bg-cyan-900/40 text-cyan-400 hover:bg-cyan-800/50 hover:text-cyan-300'
+        }`}
+      >
+        <Bell size={12} />
+        {waking ? 'Waking...' : 'Wake Now'}
+      </button>
     </div>
   )
 }

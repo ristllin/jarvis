@@ -28,6 +28,7 @@ export const api = {
     }),
   pause: () => fetchJSON<any>('/control/pause', { method: 'POST' }),
   resume: () => fetchJSON<any>('/control/resume', { method: 'POST' }),
+  wake: () => fetchJSON<any>('/control/wake', { method: 'POST' }),
   overrideBudget: (new_cap_usd: number) =>
     fetchJSON<any>('/budget/override', {
       method: 'POST',

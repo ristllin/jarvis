@@ -9,6 +9,9 @@ export interface JarvisStatus {
   iteration: number
   is_paused: boolean
   started_at: string | null
+  current_sleep_seconds?: number
+  min_sleep_seconds?: number
+  max_sleep_seconds?: number
 }
 
 export interface BudgetStatus {
@@ -49,6 +52,7 @@ export interface WSMessage {
   timestamp?: string
   iteration?: number
   error?: string
+  next_wake_seconds?: number
   [key: string]: unknown
 }
 

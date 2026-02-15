@@ -26,9 +26,18 @@ def get_app_state():
 async def get_status():
     state = get_app_state()
     current = await state["state_manager"].get_state()
+    core_loop = state.get("core_loop")
+    sleep_info = {}
+    if core_loop:
+        sleep_info = {
+            "current_sleep_seconds": core_loop._current_sleep_seconds,
+            "min_sleep_seconds": 10,
+            "max_sleep_seconds": 3600,
+        }
     return {
         "status": "running" if not current.get("is_paused") else "paused",
         **current,
+        **sleep_info,
     }
 
 
