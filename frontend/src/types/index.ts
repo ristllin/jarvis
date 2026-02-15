@@ -14,11 +14,22 @@ export interface JarvisStatus {
   max_sleep_seconds?: number
 }
 
+export interface ProviderStatus {
+  provider: string
+  known_balance: number | null
+  spent_tracked: number
+  estimated_remaining: number | null
+  tier: string
+  notes: string | null
+  balance_updated_at: string | null
+}
+
 export interface BudgetStatus {
   monthly_cap: number
   spent: number
   remaining: number
   percent_used: number
+  providers?: ProviderStatus[]
 }
 
 export interface MemoryStats {

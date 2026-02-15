@@ -1,14 +1,50 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { api } from '../api/client'
-import type { BudgetStatus } from '../types'
+import type { BudgetStatus, ProviderStatus } from '../types'
+import { DollarSign, RefreshCw, Plus, Check, X, Edit2 } from 'lucide-react'
 
 interface Props {
   budget: BudgetStatus | null
   onRefresh: () => void
 }
 
+const TIER_COLORS: Record<string, string> = {
+  paid: 'blue',
+  free: 'green',
+  unknown: 'gray',
+}
+
+const PROVIDER_ICONS: Record<string, string> = {
+  anthropic: '🅰️',
+  openai: '🤖',
+  mistral: '🌬️',
+  tavily: '🔍',
+  ollama: '🦙',
+}
+
 export function BudgetPanel({ budget, onRefresh }: Props) {
   const [newCap, setNewCap] = useState('')
+  const [providers, setProviders] = useState<ProviderStatus[]>([])
+  const [editingProvider, setEditingProvider] = useState<string | null>(null)
+  const [editBalance, setEditBalance] = useState('')
+  const [editNotes, setEditNotes] = useState('')
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [newProvider, setNewProvider] = useState({ provider: '', api_key: '', known_balance: '', tier: 'unknown', notes: '' })
+
+  useEffect(() => {
+    if (budget?.providers) {
+      setProviders(budget.providers)
+    } else {
+      loadProviders()
+    }
+  }, [budget])
+
+  const loadProviders = async () => {
+    try {
+      const data = await api.getProviders()
+      setProviders(data.providers || [])
+    } catch {}
+  }
 
   const handleOverride = async () => {
     const val = parseFloat(newCap)
@@ -18,40 +54,164 @@ export function BudgetPanel({ budget, onRefresh }: Props) {
     onRefresh()
   }
 
+  const startEdit = (p: ProviderStatus) => {
+    setEditingProvider(p.provider)
+    setEditBalance(p.known_balance != null ? String(p.known_balance) : '')
+    setEditNotes(p.notes || '')
+  }
+
+  const saveEdit = async () => {
+    if (!editingProvider) return
+    const update: any = {}
+    const bal = parseFloat(editBalance)
+    if (!isNaN(bal)) {
+      update.known_balance = bal
+      update.reset_spending = true
+    }
+    if (editNotes) update.notes = editNotes
+    await api.updateProvider(editingProvider, update)
+    setEditingProvider(null)
+    onRefresh()
+    loadProviders()
+  }
+
+  const handleAddProvider = async () => {
+    if (!newProvider.provider) return
+    const data: any = { provider: newProvider.provider, tier: newProvider.tier }
+    if (newProvider.api_key) data.api_key = newProvider.api_key
+    if (newProvider.known_balance) data.known_balance = parseFloat(newProvider.known_balance)
+    if (newProvider.notes) data.notes = newProvider.notes
+    await api.addProvider(data)
+    setShowAddForm(false)
+    setNewProvider({ provider: '', api_key: '', known_balance: '', tier: 'unknown', notes: '' })
+    onRefresh()
+    loadProviders()
+  }
+
   if (!budget) return <p className="text-gray-500">Loading budget data...</p>
 
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-bold">Budget Management</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold">Budget & Resources</h2>
+        <button onClick={() => { onRefresh(); loadProviders() }} className="text-gray-400 hover:text-gray-200 transition-colors">
+          <RefreshCw size={16} />
+        </button>
+      </div>
 
+      {/* Overall summary */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 text-center">
-          <p className="text-xs text-gray-500 uppercase tracking-wider">Monthly Cap</p>
-          <p className="text-3xl font-bold text-gray-200 mt-2">${budget.monthly_cap.toFixed(2)}</p>
-        </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 text-center">
-          <p className="text-xs text-gray-500 uppercase tracking-wider">Spent</p>
-          <p className="text-3xl font-bold text-red-400 mt-2">${budget.spent.toFixed(2)}</p>
-        </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 text-center">
-          <p className="text-xs text-gray-500 uppercase tracking-wider">Remaining</p>
+          <p className="text-xs text-gray-500 uppercase tracking-wider">Total Available</p>
           <p className="text-3xl font-bold text-green-400 mt-2">${budget.remaining.toFixed(2)}</p>
+          <p className="text-xs text-gray-600 mt-1">across all providers</p>
         </div>
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 text-center">
-          <p className="text-xs text-gray-500 uppercase tracking-wider">Used</p>
+          <p className="text-xs text-gray-500 uppercase tracking-wider">Total Spent</p>
+          <p className="text-3xl font-bold text-red-400 mt-2">${budget.spent.toFixed(2)}</p>
+          <p className="text-xs text-gray-600 mt-1">this month</p>
+        </div>
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 text-center">
+          <p className="text-xs text-gray-500 uppercase tracking-wider">Providers</p>
+          <p className="text-3xl font-bold text-blue-400 mt-2">{providers.length}</p>
+          <p className="text-xs text-gray-600 mt-1">{providers.filter(p => p.tier === 'paid').length} paid, {providers.filter(p => p.tier === 'free').length} free</p>
+        </div>
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 text-center">
+          <p className="text-xs text-gray-500 uppercase tracking-wider">Usage</p>
           <p className={`text-3xl font-bold mt-2 ${budget.percent_used > 80 ? 'text-red-400' : budget.percent_used > 50 ? 'text-yellow-400' : 'text-green-400'}`}>
             {budget.percent_used.toFixed(1)}%
           </p>
+          <div className="mt-2 w-full bg-gray-800 rounded-full h-1.5">
+            <div
+              className={`h-1.5 rounded-full ${budget.percent_used > 80 ? 'bg-red-500' : budget.percent_used > 50 ? 'bg-yellow-500' : 'bg-green-500'}`}
+              style={{ width: `${Math.min(100, budget.percent_used)}%` }}
+            />
+          </div>
         </div>
       </div>
 
-      <div className="w-full bg-gray-800 rounded-full h-4">
-        <div
-          className={`h-4 rounded-full transition-all ${budget.percent_used > 80 ? 'bg-red-500' : budget.percent_used > 50 ? 'bg-yellow-500' : 'bg-green-500'}`}
-          style={{ width: `${Math.min(100, budget.percent_used)}%` }}
-        />
+      {/* Per-provider cards */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium text-gray-400">Provider Balances</h3>
+          <button
+            onClick={() => setShowAddForm(!showAddForm)}
+            className="flex items-center gap-1 text-xs text-jarvis-400 hover:text-jarvis-300 transition-colors"
+          >
+            <Plus size={14} /> Add Provider
+          </button>
+        </div>
+
+        {/* Add provider form */}
+        {showAddForm && (
+          <div className="bg-gray-900 border border-jarvis-800 rounded-lg p-4 mb-4 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                value={newProvider.provider}
+                onChange={e => setNewProvider({ ...newProvider, provider: e.target.value })}
+                placeholder="Provider name (e.g. groq)"
+                className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-jarvis-500"
+              />
+              <input
+                value={newProvider.api_key}
+                onChange={e => setNewProvider({ ...newProvider, api_key: e.target.value })}
+                placeholder="API key (optional)"
+                type="password"
+                className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-jarvis-500"
+              />
+              <input
+                value={newProvider.known_balance}
+                onChange={e => setNewProvider({ ...newProvider, known_balance: e.target.value })}
+                placeholder="Balance ($)"
+                type="number"
+                className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-jarvis-500"
+              />
+              <select
+                value={newProvider.tier}
+                onChange={e => setNewProvider({ ...newProvider, tier: e.target.value })}
+                className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-jarvis-500"
+              >
+                <option value="paid">Paid</option>
+                <option value="free">Free Tier</option>
+                <option value="unknown">Unknown</option>
+              </select>
+            </div>
+            <input
+              value={newProvider.notes}
+              onChange={e => setNewProvider({ ...newProvider, notes: e.target.value })}
+              placeholder="Notes (optional)"
+              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-jarvis-500"
+            />
+            <div className="flex gap-2">
+              <button onClick={handleAddProvider} className="px-3 py-1.5 bg-jarvis-700 text-white rounded text-sm hover:bg-jarvis-600">
+                Add
+              </button>
+              <button onClick={() => setShowAddForm(false)} className="px-3 py-1.5 bg-gray-800 text-gray-400 rounded text-sm hover:bg-gray-700">
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {providers.map((p) => (
+            <ProviderCard
+              key={p.provider}
+              provider={p}
+              isEditing={editingProvider === p.provider}
+              editBalance={editBalance}
+              editNotes={editNotes}
+              onEditBalance={setEditBalance}
+              onEditNotes={setEditNotes}
+              onStartEdit={() => startEdit(p)}
+              onSave={saveEdit}
+              onCancel={() => setEditingProvider(null)}
+            />
+          ))}
+        </div>
       </div>
 
+      {/* Monthly cap override */}
       <div className="bg-gray-900 border border-gray-800 rounded-lg p-5">
         <h3 className="text-sm font-medium text-gray-400 mb-3">Override Monthly Cap</h3>
         <div className="flex gap-3">
@@ -70,6 +230,127 @@ export function BudgetPanel({ budget, onRefresh }: Props) {
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+function ProviderCard({
+  provider: p,
+  isEditing,
+  editBalance,
+  editNotes,
+  onEditBalance,
+  onEditNotes,
+  onStartEdit,
+  onSave,
+  onCancel,
+}: {
+  provider: ProviderStatus
+  isEditing: boolean
+  editBalance: string
+  editNotes: string
+  onEditBalance: (v: string) => void
+  onEditNotes: (v: string) => void
+  onStartEdit: () => void
+  onSave: () => void
+  onCancel: () => void
+}) {
+  const icon = PROVIDER_ICONS[p.provider] || '🔌'
+  const tierColor = TIER_COLORS[p.tier] || 'gray'
+  const hasBalance = p.known_balance != null
+  const remaining = p.estimated_remaining
+
+  // Compute usage percentage for the bar
+  let usagePct = 0
+  if (hasBalance && p.known_balance! > 0) {
+    usagePct = Math.min(100, (p.spent_tracked / p.known_balance!) * 100)
+  }
+
+  return (
+    <div className={`bg-gray-900 border rounded-lg p-4 ${isEditing ? 'border-jarvis-500' : 'border-gray-800'}`}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">{icon}</span>
+          <h4 className="font-medium text-gray-200 capitalize">{p.provider}</h4>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded bg-${tierColor}-500/20 text-${tierColor}-400 uppercase`}>
+            {p.tier}
+          </span>
+          {!isEditing && (
+            <button onClick={onStartEdit} className="text-gray-500 hover:text-gray-300">
+              <Edit2 size={12} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {isEditing ? (
+        <div className="space-y-2 mt-2">
+          <div>
+            <label className="text-[10px] text-gray-500 uppercase">Balance ($)</label>
+            <input
+              type="number"
+              value={editBalance}
+              onChange={e => onEditBalance(e.target.value)}
+              placeholder="Current balance"
+              className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm focus:outline-none focus:border-jarvis-500"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-gray-500 uppercase">Notes</label>
+            <input
+              value={editNotes}
+              onChange={e => onEditNotes(e.target.value)}
+              placeholder="Notes"
+              className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm focus:outline-none focus:border-jarvis-500"
+            />
+          </div>
+          <div className="flex gap-2">
+            <button onClick={onSave} className="flex items-center gap-1 px-2 py-1 bg-green-800/50 text-green-400 rounded text-xs hover:bg-green-700/50">
+              <Check size={12} /> Save
+            </button>
+            <button onClick={onCancel} className="flex items-center gap-1 px-2 py-1 bg-gray-800 text-gray-400 rounded text-xs hover:bg-gray-700">
+              <X size={12} /> Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {hasBalance ? (
+            <div className="space-y-1.5">
+              <div className="flex justify-between items-baseline">
+                <span className="text-2xl font-bold text-green-400">${remaining?.toFixed(2)}</span>
+                <span className="text-xs text-gray-500">of ${p.known_balance?.toFixed(2)}</span>
+              </div>
+              <div className="w-full bg-gray-800 rounded-full h-1.5">
+                <div
+                  className={`h-1.5 rounded-full ${usagePct > 80 ? 'bg-red-500' : usagePct > 50 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                  style={{ width: `${usagePct}%` }}
+                />
+              </div>
+              <p className="text-[11px] text-gray-500">
+                ${p.spent_tracked.toFixed(4)} spent (tracked)
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <p className="text-sm text-gray-400">Balance unknown</p>
+              <p className="text-[11px] text-gray-500">
+                ${p.spent_tracked.toFixed(4)} spent (tracked)
+              </p>
+            </div>
+          )}
+          {p.notes && (
+            <p className="text-[11px] text-gray-600 mt-2">{p.notes}</p>
+          )}
+          {p.balance_updated_at && (
+            <p className="text-[10px] text-gray-700 mt-1">
+              Updated: {new Date(p.balance_updated_at).toLocaleDateString()}
+            </p>
+          )}
+        </>
+      )}
     </div>
   )
 }

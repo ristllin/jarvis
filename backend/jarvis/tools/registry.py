@@ -11,6 +11,7 @@ from jarvis.tools.budget_query import BudgetQueryTool
 from jarvis.tools.llm_config import LLMConfigTool
 from jarvis.tools.self_modify import SelfModifyTool
 from jarvis.tools.coding_agent import CodingAgentTool
+from jarvis.tools.resource_manager import ResourceManagerTool
 from jarvis.memory.vector import VectorMemory
 from jarvis.safety.validator import SafetyValidator
 from jarvis.observability.logger import get_logger
@@ -44,6 +45,7 @@ class ToolRegistry:
         ]
         if budget_tracker:
             default_tools.append(BudgetQueryTool(budget_tracker))
+            default_tools.append(ResourceManagerTool(budget_tracker))
         if llm_router:
             default_tools.append(LLMConfigTool(llm_router))
             default_tools.append(CodingAgentTool(llm_router, blob_storage=blob_storage))

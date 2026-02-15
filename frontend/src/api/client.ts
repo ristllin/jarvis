@@ -36,6 +36,19 @@ export const api = {
     }),
   health: () => fetchJSON<any>('/health'),
 
+  // Providers
+  getProviders: () => fetchJSON<any>('/providers'),
+  updateProvider: (provider: string, data: { known_balance?: number; tier?: string; notes?: string; reset_spending?: boolean }) =>
+    fetchJSON<any>(`/providers/${provider}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  addProvider: (data: { provider: string; api_key?: string; known_balance?: number; tier?: string; notes?: string }) =>
+    fetchJSON<any>('/providers', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
   // Chat
   sendChat: (message: string) =>
     fetchJSON<any>('/chat', {

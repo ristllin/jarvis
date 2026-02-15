@@ -65,6 +65,20 @@ class LLMProviderConfig(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class ProviderBalance(Base):
+    """Tracks known account balance per API provider."""
+    __tablename__ = "provider_balances"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    provider = Column(String(50), unique=True, nullable=False)       # anthropic, openai, mistral, tavily, ollama
+    known_balance = Column(Float, nullable=True)                     # Last known account balance (user/JARVIS-provided)
+    spent_tracked = Column(Float, default=0.0)                       # Spending tracked by our system since last balance update
+    tier = Column(String(20), default="paid")                        # paid, free, unknown
+    notes = Column(Text, nullable=True)                              # e.g. "free tier, 1000 req/day"
+    balance_updated_at = Column(DateTime(timezone=True), nullable=True)  # When balance was last set
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class ToolUsageLog(Base):
     __tablename__ = "tool_usage_log"
 

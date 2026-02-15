@@ -6,6 +6,7 @@ from sqlalchemy import select, desc
 from jarvis.api.schemas import (
     DirectiveUpdate, MemoryMarkPermanent, BudgetOverride,
     ChatRequest, ChatResponse, GoalsUpdate,
+    ProviderBalanceUpdate, AddProviderRequest,
 )
 from jarvis.api.websocket import ws_manager
 from jarvis.observability.logger import get_logger
@@ -154,6 +155,44 @@ async def override_budget(body: BudgetOverride):
             config.monthly_cap_usd = body.new_cap_usd
             await session.commit()
     return {"ok": True, "new_cap": body.new_cap_usd}
+
+
+# ── Provider balance management ───────────────────────────────────────────
+
+@router.get("/providers")
+async def get_providers():
+    """Get per-provider balance and spending info."""
+    state = get_app_state()
+    budget_status = await state["budget"].get_status()
+    return {"providers": budget_status.get("providers", [])}
+
+
+@router.put("/providers/{provider}")
+async def update_provider(provider: str, body: ProviderBalanceUpdate):
+    """Update a provider's known balance, tier, or notes."""
+    state = get_app_state()
+    result = await state["budget"].update_provider_balance(
+        provider=provider,
+        known_balance=body.known_balance,
+        tier=body.tier,
+        notes=body.notes,
+        reset_spending=body.reset_spending,
+    )
+    return {"ok": True, **result}
+
+
+@router.post("/providers")
+async def add_provider(body: AddProviderRequest):
+    """Add a new provider or update an existing one's API key."""
+    state = get_app_state()
+    result = await state["budget"].add_provider(
+        provider=body.provider,
+        api_key=body.api_key,
+        known_balance=body.known_balance,
+        tier=body.tier,
+        notes=body.notes,
+    )
+    return {"ok": True, **result}
 
 
 # ── Chat endpoint ──────────────────────────────────────────────────────────

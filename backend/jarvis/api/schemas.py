@@ -49,3 +49,17 @@ class BudgetResponse(BaseModel):
     spent: float
     remaining: float
     percent_used: float
+
+
+class ProviderBalanceUpdate(BaseModel):
+    known_balance: Optional[float] = None
+    tier: Optional[str] = None       # paid, free, unknown
+    notes: Optional[str] = None
+    reset_spending: bool = False      # Reset tracked spending when updating balance
+
+class AddProviderRequest(BaseModel):
+    provider: str
+    api_key: Optional[str] = None
+    known_balance: Optional[float] = None
+    tier: str = "unknown"
+    notes: Optional[str] = None
