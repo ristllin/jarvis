@@ -34,6 +34,15 @@ if [ -n "$GITHUB_TOKEN" ]; then
     echo "[entrypoint] GitHub token configured for push/pull"
 fi
 
+# ── 1b. Ensure GitHub remote is always configured ─────────────────────────
+_ensure_remote() {
+    local dir="$1"
+    if [ -d "$dir/.git" ] && [ -n "$GITHUB_REPO" ] && echo "$GITHUB_REPO" | grep -qv "REPLACE"; then
+        cd "$dir"
+        git remote add origin "$GITHUB_REPO" 2>/dev/null || git remote set-url origin "$GITHUB_REPO"
+    fi
+}
+
 # ── 2. Initialize code backup in /data/code/ ──────────────────────────────
 mkdir -p "$CODE_BACKUP/backend" "$CODE_BACKUP/frontend"
 
@@ -139,6 +148,11 @@ if [ ! -d "/app/.git" ]; then
     git add -A
     git commit -m "JARVIS live code — synced from backup" --allow-empty 2>/dev/null || true
 fi
+
+# Ensure GitHub remote is always configured in both repos
+_ensure_remote "$CODE_BACKUP/backend"
+_ensure_remote "/app"
+echo "[entrypoint] Git remotes configured"
 
 # ── 4. Syntax check — validate Python code loads ──────────────────────────
 echo "[entrypoint] Validating Python code..."
