@@ -156,6 +156,20 @@ def build_system_prompt(
         "Be strategic: don't burn tokens on empty iterations. If you have no work, sleep longer."
     )
 
+    # Memory control
+    sections.append(
+        "\n## MEMORY CONTROL\n"
+        "Each iteration, your most relevant long-term memories are injected into your context window.\n"
+        "You can tune this by including `\"memory_config\"` in your response:\n"
+        "- `\"retrieval_count\"`: Number of memories to retrieve per iteration (default 10, max 100)\n"
+        "- `\"relevance_threshold\"`: Min similarity to include (0.0-1.0, default 0.0 = all)\n"
+        "- `\"decay_factor\"`: How fast old memories lose importance (0.0-1.0, default 0.95)\n"
+        "- `\"max_context_tokens\"`: Max working context window (default 120000)\n"
+        "\n"
+        "Adjust these based on your needs. For deep research tasks, increase retrieval_count. "
+        "For focused work, increase relevance_threshold to only see highly relevant memories."
+    )
+
     sections.append("\n## RESPONSE FORMAT")
     sections.append(
         "Respond with a JSON object containing:\n"
@@ -163,6 +177,7 @@ def build_system_prompt(
         '- "actions": Array of tool calls, each with "tool" and "parameters"\n'
         '- "goals_update": Optional object with keys "short_term", "mid_term", "long_term" — each an array of strings\n'
         '- "sleep_seconds": Optional number — how long to sleep before next iteration (10-3600)\n'
+        '- "memory_config": Optional object to tune memory retrieval (retrieval_count, relevance_threshold, etc.)\n'
         '- "status_message": A brief status message for the creator dashboard\n'
         "If you have no actions to take, return an empty actions array, set a longer sleep_seconds, and explain why in thinking."
     )

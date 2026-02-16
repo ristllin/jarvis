@@ -113,6 +113,39 @@ class VectorMemory:
             log.info("memories_pruned", count=len(to_delete))
         return len(to_delete)
 
+    def get_all(self, limit: int = 100, offset: int = 0) -> list[dict]:
+        """Get all vector memory entries for browsing."""
+        if not self.collection or self.collection.count() == 0:
+            return []
+        all_data = self.collection.get(
+            include=["documents", "metadatas"],
+            limit=limit,
+            offset=offset,
+        )
+        entries = []
+        for i, mid in enumerate(all_data["ids"]):
+            doc = all_data["documents"][i] if all_data["documents"] else ""
+            meta = all_data["metadatas"][i] if all_data["metadatas"] else {}
+            entries.append({
+                "id": mid,
+                "content": doc,
+                "importance_score": float(meta.get("importance_score", 0)),
+                "source": meta.get("source", ""),
+                "permanent": meta.get("permanent_flag") in (True, "True", "true"),
+                "created_at": meta.get("created_at", ""),
+                "ttl_hours": int(meta.get("ttl_hours", -1)),
+                "metadata": {k: v for k, v in meta.items()
+                             if k not in ("importance_score", "source", "permanent_flag", "created_at", "ttl_hours", "creator_flag")},
+            })
+        # Sort by importance descending
+        entries.sort(key=lambda e: e["importance_score"], reverse=True)
+        return entries
+
+    def delete_memory(self, memory_id: str):
+        """Delete a specific memory entry."""
+        if self.collection:
+            self.collection.delete(ids=[memory_id])
+
     def get_stats(self) -> dict:
         count = self.collection.count() if self.collection else 0
         return {"total_entries": count}

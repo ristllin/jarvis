@@ -31,13 +31,22 @@ PRICING = {
     },
 }
 
+# Currency symbols for display
+CURRENCY_SYMBOLS = {
+    "USD": "$",
+    "EUR": "€",
+    "GBP": "£",
+    "credits": "",    # show as "989 credits"
+    "requests": "",   # show as "989 requests"
+}
+
 # Default known balances — seeded on first run, then updated by user/JARVIS
 DEFAULT_PROVIDERS = [
-    {"provider": "anthropic",  "known_balance": 11.71, "tier": "paid",    "notes": "Prepaid credits"},
-    {"provider": "openai",     "known_balance": 18.85, "tier": "paid",    "notes": "Prepaid credits"},
-    {"provider": "mistral",    "known_balance": None,  "tier": "free",    "notes": "Free tier — limits unknown"},
-    {"provider": "tavily",     "known_balance": None,  "tier": "free",    "notes": "Free tier — 1000 searches/month"},
-    {"provider": "ollama",     "known_balance": None,  "tier": "free",    "notes": "Local — no cost"},
+    {"provider": "anthropic",  "known_balance": 11.71, "tier": "paid",    "currency": "USD",     "notes": "Prepaid credits"},
+    {"provider": "openai",     "known_balance": 18.85, "tier": "paid",    "currency": "USD",     "notes": "Prepaid credits"},
+    {"provider": "mistral",    "known_balance": None,  "tier": "free",    "currency": "USD",     "notes": "Free tier — limits unknown"},
+    {"provider": "tavily",     "known_balance": 1000,  "tier": "free",    "currency": "credits", "notes": "Monthly plan — 1000 credits/month"},
+    {"provider": "ollama",     "known_balance": None,  "tier": "free",    "currency": "USD",     "notes": "Local — no cost"},
 ]
 
 
@@ -68,12 +77,30 @@ class BudgetTracker:
                         provider=p["provider"],
                         known_balance=p["known_balance"],
                         tier=p["tier"],
+                        currency=p.get("currency", "USD"),
                         notes=p["notes"],
                         spent_tracked=0.0,
                         balance_updated_at=datetime.now(timezone.utc) if p["known_balance"] is not None else None,
                     )
                     session.add(bal)
                 log.info("provider_balances_seeded", count=len(DEFAULT_PROVIDERS))
+            else:
+                # Migrate existing providers: ensure currency is set correctly
+                for p in DEFAULT_PROVIDERS:
+                    if p.get("currency") and p["currency"] != "USD":
+                        result = await session.execute(
+                            select(ProviderBalance).where(ProviderBalance.provider == p["provider"])
+                        )
+                        existing = result.scalar_one_or_none()
+                        if existing and (not existing.currency or existing.currency == "USD"):
+                            existing.currency = p["currency"]
+                            # Also update balance/notes if they were defaults
+                            if existing.known_balance is None and p["known_balance"] is not None:
+                                existing.known_balance = p["known_balance"]
+                                existing.balance_updated_at = datetime.now(timezone.utc)
+                            if p.get("notes"):
+                                existing.notes = p["notes"]
+                            log.info("provider_currency_migrated", provider=p["provider"], currency=p["currency"])
 
             await session.commit()
 
@@ -109,13 +136,19 @@ class BudgetTracker:
             )
             pbal = result.scalar_one_or_none()
             if pbal:
-                pbal.spent_tracked += cost
+                # For non-USD providers (credits, requests), track 1 unit per call
+                # For USD providers, track the dollar cost
+                if pbal.currency and pbal.currency not in ("USD", "EUR", "GBP"):
+                    pbal.spent_tracked += 1  # 1 credit/request per API call
+                else:
+                    pbal.spent_tracked += cost
             else:
                 # Auto-create balance entry for new providers
                 pbal = ProviderBalance(
                     provider=provider,
                     known_balance=None,
                     tier="unknown",
+                    currency="USD",
                     spent_tracked=cost,
                     notes="Auto-created from usage",
                 )
@@ -153,10 +186,13 @@ class BudgetTracker:
             providers = []
             total_available = 0.0
             for pb in provider_balances:
+                currency = pb.currency or "USD"
                 estimated_remaining = None
                 if pb.known_balance is not None:
                     estimated_remaining = max(0, pb.known_balance - pb.spent_tracked)
-                    total_available += estimated_remaining
+                    # Only sum monetary currencies into the overall USD total
+                    if currency in ("USD", "EUR", "GBP"):
+                        total_available += estimated_remaining
 
                 providers.append({
                     "provider": pb.provider,
@@ -164,6 +200,7 @@ class BudgetTracker:
                     "spent_tracked": round(pb.spent_tracked, 4),
                     "estimated_remaining": round(estimated_remaining, 4) if estimated_remaining is not None else None,
                     "tier": pb.tier,
+                    "currency": currency,
                     "notes": pb.notes,
                     "balance_updated_at": pb.balance_updated_at.isoformat() if pb.balance_updated_at else None,
                 })
@@ -202,6 +239,7 @@ class BudgetTracker:
                 "spent_tracked": round(pb.spent_tracked, 4),
                 "estimated_remaining": round(estimated_remaining, 4) if estimated_remaining is not None else None,
                 "tier": pb.tier,
+                "currency": pb.currency or "USD",
                 "notes": pb.notes,
             }
 
@@ -209,6 +247,7 @@ class BudgetTracker:
         self, provider: str,
         known_balance: float = None,
         tier: str = None,
+        currency: str = None,
         notes: str = None,
         reset_spending: bool = False,
     ) -> dict:
@@ -229,25 +268,28 @@ class BudgetTracker:
                     pb.spent_tracked = 0.0
             if tier is not None:
                 pb.tier = tier
+            if currency is not None:
+                pb.currency = currency
             if notes is not None:
                 pb.notes = notes
 
             await session.commit()
             log.info("provider_balance_updated", provider=provider,
-                     balance=known_balance, tier=tier)
+                     balance=known_balance, tier=tier, currency=pb.currency)
 
             return {
                 "provider": pb.provider,
                 "known_balance": pb.known_balance,
                 "spent_tracked": pb.spent_tracked,
                 "tier": pb.tier,
+                "currency": pb.currency or "USD",
                 "notes": pb.notes,
             }
 
     async def add_provider(
         self, provider: str, api_key: str = None,
         known_balance: float = None, tier: str = "unknown",
-        notes: str = None,
+        currency: str = "USD", notes: str = None,
     ) -> dict:
         """Add a new provider or update its API key."""
         async with self.session_factory() as session:
@@ -260,6 +302,7 @@ class BudgetTracker:
                     provider=provider,
                     known_balance=known_balance,
                     tier=tier,
+                    currency=currency,
                     notes=notes or "",
                     spent_tracked=0.0,
                     balance_updated_at=datetime.now(timezone.utc) if known_balance else None,
@@ -271,6 +314,8 @@ class BudgetTracker:
                     pb.balance_updated_at = datetime.now(timezone.utc)
                 if tier:
                     pb.tier = tier
+                if currency:
+                    pb.currency = currency
                 if notes:
                     pb.notes = notes
 
@@ -279,13 +324,12 @@ class BudgetTracker:
         # If API key provided, store it in config
         if api_key:
             from jarvis.config import settings
-            # Update the env-based config (in-memory, not persisted to .env)
             key_attr = f"{provider}_api_key"
             if hasattr(settings, key_attr):
                 setattr(settings, key_attr, api_key)
                 log.info("api_key_updated", provider=provider)
 
-        return {"provider": provider, "known_balance": known_balance, "tier": tier}
+        return {"provider": provider, "known_balance": known_balance, "tier": tier, "currency": currency}
 
     async def can_spend(self, estimated_cost: float = 0.01) -> bool:
         status = await self.get_status()

@@ -52,7 +52,16 @@ async def lifespan(app: FastAPI):
                 log.info("column_added", table="jarvis_state", column=col)
             except Exception:
                 pass  # Column already exists
-        # Create chat_messages table if needed (handled by create_all)
+        # Add currency column to provider_balances (safe to run repeatedly)
+        try:
+            await conn.execute(
+                __import__("sqlalchemy").text(
+                    "ALTER TABLE provider_balances ADD COLUMN currency VARCHAR(20) DEFAULT 'USD'"
+                )
+            )
+            log.info("column_added", table="provider_balances", column="currency")
+        except Exception:
+            pass  # Column already exists
     log.info("database_initialized")
 
     # 2. Initialize subsystems
@@ -75,7 +84,7 @@ async def lifespan(app: FastAPI):
     tools = ToolRegistry(vector, validator, budget_tracker=budget, llm_router=router, blob_storage=blob)
     state_manager = StateManager(async_session)
     planner = Planner(router, working, vector)
-    executor = Executor(tools, blob, file_logger)
+    executor = Executor(tools, blob, file_logger, session_factory=async_session)
 
     # 3. Configure git inside container
     await _configure_git()

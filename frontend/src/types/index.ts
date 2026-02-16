@@ -20,6 +20,7 @@ export interface ProviderStatus {
   spent_tracked: number
   estimated_remaining: number | null
   tier: string
+  currency: string         // USD, EUR, credits, requests, etc.
   notes: string | null
   balance_updated_at: string | null
 }
@@ -35,6 +36,43 @@ export interface BudgetStatus {
 export interface MemoryStats {
   vector: { total_entries: number }
   blob: { total_files: number; total_size_bytes: number; total_size_mb: number }
+}
+
+export interface VectorMemoryEntry {
+  id: string
+  content: string
+  importance_score: number
+  source: string
+  permanent: boolean
+  created_at: string
+  ttl_hours: number
+  distance?: number
+  metadata: Record<string, unknown>
+}
+
+export interface BlobEntry {
+  timestamp: string
+  event_type: string
+  content: string
+  metadata: Record<string, unknown>
+}
+
+export interface MemoryConfig {
+  retrieval_count: number
+  max_context_tokens: number
+  decay_factor: number
+  relevance_threshold: number
+}
+
+export interface WorkingMemorySnapshot {
+  system_prompt_length: number
+  system_prompt_tokens: number
+  message_count: number
+  injected_memory_count: number
+  injected_memories: VectorMemoryEntry[]
+  total_tokens_estimate: number
+  max_context_tokens: number
+  config: MemoryConfig
 }
 
 export interface LogEntry {

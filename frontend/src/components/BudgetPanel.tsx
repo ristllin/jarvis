@@ -22,14 +22,46 @@ const PROVIDER_ICONS: Record<string, string> = {
   ollama: '🦙',
 }
 
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: '$',
+  EUR: '€',
+  GBP: '£',
+}
+
+function isMonetary(currency: string): boolean {
+  return ['USD', 'EUR', 'GBP'].includes(currency)
+}
+
+function fmtBalance(value: number | null | undefined, currency: string, decimals?: number): string {
+  if (value == null) return 'unknown'
+  const sym = CURRENCY_SYMBOLS[currency]
+  if (sym) {
+    return `${sym}${value.toFixed(decimals ?? 2)}`
+  }
+  // Non-monetary: "989 credits", "150 requests"
+  return `${Math.round(value)} ${currency}`
+}
+
+function fmtSpent(value: number, currency: string): string {
+  if (isMonetary(currency)) {
+    return `${CURRENCY_SYMBOLS[currency] || ''}${value.toFixed(4)} spent`
+  }
+  return `${Math.round(value)} ${currency} used`
+}
+
+const COMMON_CURRENCIES = ['USD', 'EUR', 'GBP', 'credits', 'requests']
+
 export function BudgetPanel({ budget, onRefresh }: Props) {
   const [newCap, setNewCap] = useState('')
   const [providers, setProviders] = useState<ProviderStatus[]>([])
   const [editingProvider, setEditingProvider] = useState<string | null>(null)
   const [editBalance, setEditBalance] = useState('')
   const [editNotes, setEditNotes] = useState('')
+  const [editCurrency, setEditCurrency] = useState('')
   const [showAddForm, setShowAddForm] = useState(false)
-  const [newProvider, setNewProvider] = useState({ provider: '', api_key: '', known_balance: '', tier: 'unknown', notes: '' })
+  const [newProvider, setNewProvider] = useState({
+    provider: '', api_key: '', known_balance: '', tier: 'unknown', currency: 'USD', notes: ''
+  })
 
   useEffect(() => {
     if (budget?.providers) {
@@ -58,6 +90,7 @@ export function BudgetPanel({ budget, onRefresh }: Props) {
     setEditingProvider(p.provider)
     setEditBalance(p.known_balance != null ? String(p.known_balance) : '')
     setEditNotes(p.notes || '')
+    setEditCurrency(p.currency || 'USD')
   }
 
   const saveEdit = async () => {
@@ -69,6 +102,7 @@ export function BudgetPanel({ budget, onRefresh }: Props) {
       update.reset_spending = true
     }
     if (editNotes) update.notes = editNotes
+    if (editCurrency) update.currency = editCurrency
     await api.updateProvider(editingProvider, update)
     setEditingProvider(null)
     onRefresh()
@@ -77,18 +111,26 @@ export function BudgetPanel({ budget, onRefresh }: Props) {
 
   const handleAddProvider = async () => {
     if (!newProvider.provider) return
-    const data: any = { provider: newProvider.provider, tier: newProvider.tier }
+    const data: any = {
+      provider: newProvider.provider,
+      tier: newProvider.tier,
+      currency: newProvider.currency,
+    }
     if (newProvider.api_key) data.api_key = newProvider.api_key
     if (newProvider.known_balance) data.known_balance = parseFloat(newProvider.known_balance)
     if (newProvider.notes) data.notes = newProvider.notes
     await api.addProvider(data)
     setShowAddForm(false)
-    setNewProvider({ provider: '', api_key: '', known_balance: '', tier: 'unknown', notes: '' })
+    setNewProvider({ provider: '', api_key: '', known_balance: '', tier: 'unknown', currency: 'USD', notes: '' })
     onRefresh()
     loadProviders()
   }
 
   if (!budget) return <p className="text-gray-500">Loading budget data...</p>
+
+  // Separate monetary from non-monetary for the summary
+  const monetaryProviders = providers.filter(p => isMonetary(p.currency || 'USD'))
+  const nonMonetaryProviders = providers.filter(p => !isMonetary(p.currency || 'USD'))
 
   return (
     <div className="space-y-6">
@@ -102,12 +144,12 @@ export function BudgetPanel({ budget, onRefresh }: Props) {
       {/* Overall summary */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 text-center">
-          <p className="text-xs text-gray-500 uppercase tracking-wider">Total Available</p>
+          <p className="text-xs text-gray-500 uppercase tracking-wider">Total Available (USD)</p>
           <p className="text-3xl font-bold text-green-400 mt-2">${budget.remaining.toFixed(2)}</p>
-          <p className="text-xs text-gray-600 mt-1">across all providers</p>
+          <p className="text-xs text-gray-600 mt-1">across paid providers</p>
         </div>
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 text-center">
-          <p className="text-xs text-gray-500 uppercase tracking-wider">Total Spent</p>
+          <p className="text-xs text-gray-500 uppercase tracking-wider">Total Spent (USD)</p>
           <p className="text-3xl font-bold text-red-400 mt-2">${budget.spent.toFixed(2)}</p>
           <p className="text-xs text-gray-600 mt-1">this month</p>
         </div>
@@ -117,7 +159,7 @@ export function BudgetPanel({ budget, onRefresh }: Props) {
           <p className="text-xs text-gray-600 mt-1">{providers.filter(p => p.tier === 'paid').length} paid, {providers.filter(p => p.tier === 'free').length} free</p>
         </div>
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 text-center">
-          <p className="text-xs text-gray-500 uppercase tracking-wider">Usage</p>
+          <p className="text-xs text-gray-500 uppercase tracking-wider">Usage (USD)</p>
           <p className={`text-3xl font-bold mt-2 ${budget.percent_used > 80 ? 'text-red-400' : budget.percent_used > 50 ? 'text-yellow-400' : 'text-green-400'}`}>
             {budget.percent_used.toFixed(1)}%
           </p>
@@ -129,6 +171,25 @@ export function BudgetPanel({ budget, onRefresh }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Non-monetary provider summaries (credits, requests, etc.) */}
+      {nonMonetaryProviders.filter(p => p.known_balance != null).length > 0 && (
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+          <h4 className="text-xs text-gray-500 uppercase tracking-wider mb-3">Non-USD Resources</h4>
+          <div className="flex gap-4 flex-wrap">
+            {nonMonetaryProviders.filter(p => p.known_balance != null).map(p => (
+              <div key={p.provider} className="flex items-center gap-2">
+                <span>{PROVIDER_ICONS[p.provider] || '🔌'}</span>
+                <span className="text-sm text-gray-300 capitalize">{p.provider}:</span>
+                <span className="text-sm font-bold text-green-400">
+                  {fmtBalance(p.estimated_remaining, p.currency)}
+                </span>
+                <span className="text-xs text-gray-500">/ {fmtBalance(p.known_balance, p.currency)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Per-provider cards */}
       <div>
@@ -162,10 +223,19 @@ export function BudgetPanel({ budget, onRefresh }: Props) {
               <input
                 value={newProvider.known_balance}
                 onChange={e => setNewProvider({ ...newProvider, known_balance: e.target.value })}
-                placeholder="Balance ($)"
+                placeholder="Balance"
                 type="number"
                 className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-jarvis-500"
               />
+              <select
+                value={newProvider.currency}
+                onChange={e => setNewProvider({ ...newProvider, currency: e.target.value })}
+                className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-jarvis-500"
+              >
+                {COMMON_CURRENCIES.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
               <select
                 value={newProvider.tier}
                 onChange={e => setNewProvider({ ...newProvider, tier: e.target.value })}
@@ -201,8 +271,10 @@ export function BudgetPanel({ budget, onRefresh }: Props) {
               isEditing={editingProvider === p.provider}
               editBalance={editBalance}
               editNotes={editNotes}
+              editCurrency={editCurrency}
               onEditBalance={setEditBalance}
               onEditNotes={setEditNotes}
+              onEditCurrency={setEditCurrency}
               onStartEdit={() => startEdit(p)}
               onSave={saveEdit}
               onCancel={() => setEditingProvider(null)}
@@ -239,8 +311,10 @@ function ProviderCard({
   isEditing,
   editBalance,
   editNotes,
+  editCurrency,
   onEditBalance,
   onEditNotes,
+  onEditCurrency,
   onStartEdit,
   onSave,
   onCancel,
@@ -249,16 +323,20 @@ function ProviderCard({
   isEditing: boolean
   editBalance: string
   editNotes: string
+  editCurrency: string
   onEditBalance: (v: string) => void
   onEditNotes: (v: string) => void
+  onEditCurrency: (v: string) => void
   onStartEdit: () => void
   onSave: () => void
   onCancel: () => void
 }) {
   const icon = PROVIDER_ICONS[p.provider] || '🔌'
   const tierColor = TIER_COLORS[p.tier] || 'gray'
+  const currency = p.currency || 'USD'
   const hasBalance = p.known_balance != null
   const remaining = p.estimated_remaining
+  const monetary = isMonetary(currency)
 
   // Compute usage percentage for the bar
   let usagePct = 0
@@ -277,6 +355,11 @@ function ProviderCard({
           <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded bg-${tierColor}-500/20 text-${tierColor}-400 uppercase`}>
             {p.tier}
           </span>
+          {!monetary && (
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 uppercase">
+              {currency}
+            </span>
+          )}
           {!isEditing && (
             <button onClick={onStartEdit} className="text-gray-500 hover:text-gray-300">
               <Edit2 size={12} />
@@ -287,15 +370,29 @@ function ProviderCard({
 
       {isEditing ? (
         <div className="space-y-2 mt-2">
-          <div>
-            <label className="text-[10px] text-gray-500 uppercase">Balance ($)</label>
-            <input
-              type="number"
-              value={editBalance}
-              onChange={e => onEditBalance(e.target.value)}
-              placeholder="Current balance"
-              className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm focus:outline-none focus:border-jarvis-500"
-            />
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] text-gray-500 uppercase">Balance</label>
+              <input
+                type="number"
+                value={editBalance}
+                onChange={e => onEditBalance(e.target.value)}
+                placeholder="Current balance"
+                className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm focus:outline-none focus:border-jarvis-500"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] text-gray-500 uppercase">Currency</label>
+              <select
+                value={editCurrency}
+                onChange={e => onEditCurrency(e.target.value)}
+                className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm focus:outline-none focus:border-jarvis-500"
+              >
+                {COMMON_CURRENCIES.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div>
             <label className="text-[10px] text-gray-500 uppercase">Notes</label>
@@ -320,8 +417,8 @@ function ProviderCard({
           {hasBalance ? (
             <div className="space-y-1.5">
               <div className="flex justify-between items-baseline">
-                <span className="text-2xl font-bold text-green-400">${remaining?.toFixed(2)}</span>
-                <span className="text-xs text-gray-500">of ${p.known_balance?.toFixed(2)}</span>
+                <span className="text-2xl font-bold text-green-400">{fmtBalance(remaining, currency)}</span>
+                <span className="text-xs text-gray-500">of {fmtBalance(p.known_balance, currency)}</span>
               </div>
               <div className="w-full bg-gray-800 rounded-full h-1.5">
                 <div
@@ -330,14 +427,14 @@ function ProviderCard({
                 />
               </div>
               <p className="text-[11px] text-gray-500">
-                ${p.spent_tracked.toFixed(4)} spent (tracked)
+                {fmtSpent(p.spent_tracked, currency)}
               </p>
             </div>
           ) : (
             <div className="space-y-1">
               <p className="text-sm text-gray-400">Balance unknown</p>
               <p className="text-[11px] text-gray-500">
-                ${p.spent_tracked.toFixed(4)} spent (tracked)
+                {fmtSpent(p.spent_tracked, currency)}
               </p>
             </div>
           )}

@@ -38,16 +38,39 @@ export const api = {
 
   // Providers
   getProviders: () => fetchJSON<any>('/providers'),
-  updateProvider: (provider: string, data: { known_balance?: number; tier?: string; notes?: string; reset_spending?: boolean }) =>
+  updateProvider: (provider: string, data: { known_balance?: number; tier?: string; currency?: string; notes?: string; reset_spending?: boolean }) =>
     fetchJSON<any>(`/providers/${provider}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
-  addProvider: (data: { provider: string; api_key?: string; known_balance?: number; tier?: string; notes?: string }) =>
+  addProvider: (data: { provider: string; api_key?: string; known_balance?: number; tier?: string; currency?: string; notes?: string }) =>
     fetchJSON<any>('/providers', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  // Memory browsing
+  browseVectorMemory: (query?: string, limit = 50, offset = 0) => {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+    if (query) params.set('query', query)
+    return fetchJSON<any>(`/memory/vector?${params}`)
+  },
+  deleteVectorMemory: (id: string) =>
+    fetchJSON<any>(`/memory/vector/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  browseBlob: (eventType?: string, limit = 50) => {
+    const params = new URLSearchParams({ limit: String(limit) })
+    if (eventType) params.set('event_type', eventType)
+    return fetchJSON<any>(`/memory/blob?${params}`)
+  },
+  getWorkingMemory: () => fetchJSON<any>('/memory/working'),
+  updateMemoryConfig: (config: Record<string, number>) =>
+    fetchJSON<any>('/memory/config', {
+      method: 'PUT',
+      body: JSON.stringify(config),
+    }),
+
+  // Analytics
+  getAnalytics: (range = '24h') => fetchJSON<any>(`/analytics?range=${range}`),
 
   // Chat
   sendChat: (message: string) =>

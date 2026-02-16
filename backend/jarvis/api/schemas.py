@@ -54,6 +54,7 @@ class BudgetResponse(BaseModel):
 class ProviderBalanceUpdate(BaseModel):
     known_balance: Optional[float] = None
     tier: Optional[str] = None       # paid, free, unknown
+    currency: Optional[str] = None   # USD, EUR, credits, requests, etc.
     notes: Optional[str] = None
     reset_spending: bool = False      # Reset tracked spending when updating balance
 
@@ -62,4 +63,5 @@ class AddProviderRequest(BaseModel):
     api_key: Optional[str] = None
     known_balance: Optional[float] = None
     tier: str = "unknown"
+    currency: str = "USD"            # USD, EUR, credits, requests, etc.
     notes: Optional[str] = None

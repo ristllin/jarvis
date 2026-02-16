@@ -6,6 +6,14 @@ log = get_logger("working_memory")
 # Rough token estimation: 1 token ~ 4 chars
 MAX_CONTEXT_TOKENS = 120_000
 
+# Default memory retrieval config
+DEFAULT_MEMORY_CONFIG = {
+    "retrieval_count": 10,           # How many vector memories to inject per iteration
+    "max_context_tokens": 120_000,   # Max working context size in tokens
+    "decay_factor": 0.95,            # Importance decay per maintenance cycle
+    "relevance_threshold": 0.0,      # Min relevance score to include (0 = include all)
+}
+
 
 class WorkingMemory:
     """Manages the rolling context window for LLM calls."""
@@ -14,6 +22,8 @@ class WorkingMemory:
         self.messages: list[dict] = []
         self.system_prompt: str = ""
         self.injected_memories: list[str] = []
+        self.injected_memories_raw: list[dict] = []  # Full entries with metadata (for UI)
+        self.memory_config: dict = dict(DEFAULT_MEMORY_CONFIG)
 
     def set_system_prompt(self, prompt: str):
         self.system_prompt = prompt
@@ -22,8 +32,16 @@ class WorkingMemory:
         self.messages.append({"role": role, "content": content})
         self._trim_if_needed()
 
-    def inject_memories(self, memories: list[str]):
+    def inject_memories(self, memories: list[str], raw_entries: list[dict] = None):
         self.injected_memories = memories
+        self.injected_memories_raw = raw_entries or []
+
+    def update_config(self, **kwargs):
+        """Update memory config (retrieval count, thresholds, etc.)"""
+        for key, value in kwargs.items():
+            if key in self.memory_config:
+                self.memory_config[key] = value
+                log.info("memory_config_updated", key=key, value=value)
 
     def get_context(self) -> WorkingContext:
         return WorkingContext(
@@ -32,6 +50,19 @@ class WorkingMemory:
             injected_memories=self.injected_memories,
             total_tokens_estimate=self._estimate_tokens(),
         )
+
+    def get_working_snapshot(self) -> dict:
+        """Get a snapshot of current working memory for the UI."""
+        return {
+            "system_prompt_length": len(self.system_prompt),
+            "system_prompt_tokens": len(self.system_prompt) // 4,
+            "message_count": len(self.messages),
+            "injected_memory_count": len(self.injected_memories),
+            "injected_memories": self.injected_memories_raw[:50],  # Cap for API response
+            "total_tokens_estimate": self._estimate_tokens(),
+            "max_context_tokens": self.memory_config["max_context_tokens"],
+            "config": dict(self.memory_config),
+        }
 
     def get_messages_for_llm(self) -> list[dict]:
         """Build the full message list for an LLM call."""

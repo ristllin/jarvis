@@ -74,6 +74,7 @@ class ProviderBalance(Base):
     known_balance = Column(Float, nullable=True)                     # Last known account balance (user/JARVIS-provided)
     spent_tracked = Column(Float, default=0.0)                       # Spending tracked by our system since last balance update
     tier = Column(String(20), default="paid")                        # paid, free, unknown
+    currency = Column(String(20), default="USD")                     # USD, EUR, credits, requests, etc.
     notes = Column(Text, nullable=True)                              # e.g. "free tier, 1000 req/day"
     balance_updated_at = Column(DateTime(timezone=True), nullable=True)  # When balance was last set
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

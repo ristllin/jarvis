@@ -93,14 +93,21 @@ else
         for f in \
             jarvis/tools/registry.py \
             jarvis/tools/coding_agent.py \
+            jarvis/tools/self_modify.py \
+            jarvis/tools/resource_manager.py \
             jarvis/agents/__init__.py \
             jarvis/agents/coding.py \
             jarvis/safety/prompt_builder.py \
-            jarvis/tools/self_modify.py \
             jarvis/core/loop.py \
             jarvis/core/planner.py \
             jarvis/core/executor.py \
             jarvis/api/routes.py \
+            jarvis/api/schemas.py \
+            jarvis/budget/tracker.py \
+            jarvis/memory/working.py \
+            jarvis/memory/vector.py \
+            jarvis/memory/blob.py \
+            jarvis/models.py \
             jarvis/main.py \
             jarvis/config.py; do
             if [ -f "/app/$f" ]; then
@@ -198,7 +205,9 @@ cd /app
         echo "[health] Backend healthy — cleared revert flag"
 
         # Sync live code back to backup (in case startup migrations added files)
-        cp -a /app/. "$CODE_BACKUP/backend/" 2>/dev/null || true
+        # CRITICAL: exclude .git to preserve the persistent repo's history
+        rsync -a --exclude='.git' --exclude='__pycache__' /app/ "$CODE_BACKUP/backend/" 2>/dev/null || \
+            find /app -maxdepth 1 -not -name '.git' -not -name '.' -exec cp -a {} "$CODE_BACKUP/backend/" \; 2>/dev/null || true
     else
         echo "[health] Backend NOT healthy after 30s — revert flag stays"
     fi

@@ -180,20 +180,29 @@ class CoreLoop:
                         await self.state.update(goals=goals_update)
                         log.info("goals_updated", goals=goals_update)
 
-                # 8. Update active task
+                # 8. Update memory config if JARVIS requests it
+                memory_config_update = plan.get("memory_config")
+                if isinstance(memory_config_update, dict):
+                    working = self.planner.working
+                    for key in ("retrieval_count", "max_context_tokens", "decay_factor", "relevance_threshold"):
+                        if key in memory_config_update:
+                            working.update_config(**{key: memory_config_update[key]})
+
+                # 9. Update active task
                 await self.state.update(active_task=status_msg)
 
-                # 9. Periodic maintenance (every 10 iterations)
+                # 10. Periodic maintenance (every 10 iterations)
                 if iteration % 10 == 0:
-                    self.vector.decay_importance(0.95)
+                    decay = self.planner.working.memory_config.get("decay_factor", 0.95)
+                    self.vector.decay_importance(decay)
                     self.vector.prune_expired()
                     log.info("maintenance_complete", iteration=iteration)
 
-                # 10. Compute how long to sleep
+                # 11. Compute how long to sleep
                 sleep_seconds = self._compute_sleep(plan, budget_status)
                 self._current_sleep_seconds = sleep_seconds
 
-                # 11. Log iteration complete
+                # 12. Log iteration complete
                 self.file_logger.log(
                     "iteration_complete",
                     iteration=iteration,
