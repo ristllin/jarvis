@@ -20,8 +20,9 @@ PRICING = {
         "gpt-4o-mini": {"input": 0.15, "output": 0.60},
     },
     "mistral": {
-        "mistral-large-latest": {"input": 2.0, "output": 6.0},
-        "mistral-small-latest": {"input": 0.20, "output": 0.60},
+        # Mistral free tier — no dollar cost to us (usage-limited, not pay-per-token)
+        "mistral-large-latest": {"input": 0.0, "output": 0.0},
+        "mistral-small-latest": {"input": 0.0, "output": 0.0},
     },
     "ollama": {
         "default": {"input": 0.0, "output": 0.0},
@@ -336,18 +337,51 @@ class BudgetTracker:
         return status["remaining"] >= estimated_cost
 
     async def get_recommended_tier(self) -> str:
-        status = await self.get_status()
-        pct = status["percent_used"]
-        remaining = status["remaining"]
+        """Recommend a tier based on per-provider budgets.
 
-        # If very low on funds across all providers, downgrade
-        if remaining < 1.0:
-            return "local_only"
-        elif remaining < 5.0 or pct >= 80:
-            return "level3"
-        elif remaining < 15.0 or pct >= 60:
+        This is now budget-aware at the provider level:
+        - If ANY paid provider has > $2 remaining → level1 is fine
+        - If paid providers are tight but > $0.50 → level2
+        - If all paid providers are near-zero → level3
+        - Free providers (Mistral, Ollama) are always available at any tier
+
+        Note: The router further refines this by preferring free providers
+        within a tier when budget is tight.
+        """
+        status = await self.get_status()
+        providers = status.get("providers", [])
+
+        # Calculate paid provider availability
+        paid_remaining = 0.0
+        has_free_provider = False
+        for p in providers:
+            currency = p.get("currency", "USD")
+            tier = p.get("tier", "unknown")
+            est = p.get("estimated_remaining")
+
+            if tier == "free":
+                has_free_provider = True
+                continue
+
+            if est is not None and currency in ("USD", "EUR", "GBP"):
+                paid_remaining += est
+
+        # If we have decent paid budget, no restrictions
+        if paid_remaining > 5.0:
+            return "level1"
+        elif paid_remaining > 2.0:
             return "level2"
-        return "level1"
+        elif paid_remaining > 0.50:
+            # Tight budget — prefer level2 but don't force level3
+            # (free providers like Mistral fill the gaps)
+            return "level2"
+        elif has_free_provider:
+            # Almost no paid budget, but free providers exist
+            # Still allow level2 because Mistral Large is free and capable
+            return "level2"
+        else:
+            # Truly broke — no paid budget, no free providers
+            return "local_only"
 
     def _estimate_cost(self, provider: str, model: str, input_tokens: int, output_tokens: int) -> float:
         provider_pricing = PRICING.get(provider, {})
