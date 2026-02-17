@@ -8,6 +8,9 @@ The main agent provides:
   - working_directory (optional): where to focus (default: /app)
   - tier (optional): LLM tier to use (default: level2)
   - max_turns (optional): max editing iterations (default: 25)
+  - skills (optional): list of skill names to load into context
+  - plan_only (optional): if true, only generate a plan — don't execute
+  - approved_plan (optional): previously approved plan to execute
 """
 import json
 from jarvis.tools.base import Tool, ToolResult
@@ -25,9 +28,10 @@ class CodingAgentTool(Tool):
         "editing primitives — like a full coding IDE. Use this for multi-file "
         "edits, building new features, refactoring, writing tests, or modifying "
         "JARVIS's own code. You configure the task and optionally a custom "
-        "system prompt to guide the subagent."
+        "system prompt to guide the subagent. "
+        "Supports skills (reusable knowledge), planning mode, and plan execution."
     )
-    timeout_seconds = 600  # 10 minutes — complex tasks take time
+    timeout_seconds = 600  # 10 minutes
 
     def __init__(self, llm_router, blob_storage=None):
         self._agent = CodingAgent(llm_router, blob_storage)
@@ -39,6 +43,9 @@ class CodingAgentTool(Tool):
         working_directory: str = "/app",
         tier: str = "level2",
         max_turns: int = 25,
+        skills: list = None,
+        plan_only: bool = False,
+        approved_plan: dict = None,
         **kwargs,
     ) -> ToolResult:
         try:
@@ -48,6 +55,9 @@ class CodingAgentTool(Tool):
                 system_prompt=system_prompt,
                 tier=tier,
                 max_turns=max_turns,
+                skills=skills or [],
+                plan_only=plan_only,
+                approved_plan=approved_plan,
             )
 
             output = json.dumps(result, indent=2)
@@ -90,6 +100,29 @@ class CodingAgentTool(Tool):
                 "max_turns": {
                     "type": "integer",
                     "description": "Maximum editing iterations (default: 25)",
+                },
+                "skills": {
+                    "type": "array",
+                    "description": (
+                        "List of skill names to pre-load into the subagent's context. "
+                        "Use skills action=list to see available skills. "
+                        "Example: ['python-fastapi-patterns', 'react-component-style']"
+                    ),
+                },
+                "plan_only": {
+                    "type": "boolean",
+                    "description": (
+                        "If true, the agent will explore the codebase and propose a plan, "
+                        "but NOT make any changes. Use this for complex tasks where you want "
+                        "to review the plan before execution."
+                    ),
+                },
+                "approved_plan": {
+                    "type": "object",
+                    "description": (
+                        "A previously proposed plan (from plan_only=true) that you've reviewed "
+                        "and approved. The agent will execute this plan directly."
+                    ),
                 },
             },
             "required": ["task"],

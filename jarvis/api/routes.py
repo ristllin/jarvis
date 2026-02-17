@@ -7,14 +7,17 @@ from jarvis.api.schemas import (
     DirectiveUpdate, MemoryMarkPermanent, BudgetOverride,
     ChatRequest, ChatResponse, GoalsUpdate,
     ProviderBalanceUpdate, AddProviderRequest,
+    ShortTermMemoryUpdate,
 )
 from jarvis.api.websocket import ws_manager
 from jarvis.observability.logger import get_logger
-from jarvis.safety.prompt_builder import build_chat_system_prompt
 
 log = get_logger("api")
 
 router = APIRouter(prefix="/api")
+# Integrate data visualization libraries for displaying trends
+import Chart from 'chart.js';
+import D3 from 'd3';
 
 
 def get_app_state():
@@ -172,6 +175,48 @@ async def mark_memory_permanent(body: MemoryMarkPermanent):
     return {"ok": True}
 
 
+@router.get("/memory/short-term")
+async def get_short_term_memories():
+    """Get all short-term memories (scratch pad)."""
+    state = get_app_state()
+    current = await state["state_manager"].get_state()
+    return {
+        "memories": current.get("short_term_memories", []),
+        "count": len(current.get("short_term_memories", [])),
+        "max_entries": 50,
+        "max_age_hours": 48,
+    }
+
+
+@router.post("/memory/short-term")
+async def update_short_term_memories(body: ShortTermMemoryUpdate):
+    """Manage short-term memories: add, remove, or replace."""
+    state = get_app_state()
+    sm = state["state_manager"]
+    current = await sm.get_state()
+    iteration = current.get("iteration", 0)
+
+    if body.replace is not None:
+        await sm.replace_short_term_memories(body.replace, iteration)
+        return {"ok": True, "action": "replaced", "count": len(body.replace)}
+    actions = []
+    if body.remove:
+        await sm.remove_short_term_memories(body.remove)
+        actions.append(f"removed {len(body.remove)}")
+    if body.add:
+        await sm.add_short_term_memories(body.add, iteration)
+        actions.append(f"added {len(body.add)}")
+    return {"ok": True, "actions": actions}
+
+
+@router.delete("/memory/short-term")
+async def clear_short_term_memories():
+    """Clear all short-term memories."""
+    state = get_app_state()
+    await state["state_manager"].clear_short_term_memories()
+    return {"ok": True, "action": "cleared"}
+
+
 @router.post("/control/pause")
 async def pause():
     state = get_app_state()
@@ -227,12 +272,13 @@ async def get_providers():
 
 @router.put("/providers/{provider}")
 async def update_provider(provider: str, body: ProviderBalanceUpdate):
-    """Update a provider's known balance, tier, or notes."""
+    """Update a provider's known balance, tier, currency, or notes."""
     state = get_app_state()
     result = await state["budget"].update_provider_balance(
         provider=provider,
         known_balance=body.known_balance,
         tier=body.tier,
+        currency=body.currency,
         notes=body.notes,
         reset_spending=body.reset_spending,
     )
@@ -248,6 +294,7 @@ async def add_provider(body: AddProviderRequest):
         api_key=body.api_key,
         known_balance=body.known_balance,
         tier=body.tier,
+        currency=body.currency,
         notes=body.notes,
     )
     return {"ok": True, **result}
@@ -257,64 +304,64 @@ async def add_provider(body: AddProviderRequest):
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(body: ChatRequest):
-    """Chat directly with JARVIS. Messages are recorded in blob and DB."""
+    """Chat with JARVIS — fully agentic.
+
+    The message is injected into the main autonomous loop's next iteration.
+    JARVIS sees it in its full context (goals, memories, tools) and can
+    take actions alongside replying.  The HTTP request blocks until the
+    iteration completes and delivers the reply.
+    """
+    import asyncio
+
     state = get_app_state()
     blob = state["blob"]
-    llm_router = state["router"]
-    budget = state["budget"]
-    state_mgr = state["state_manager"]
+    core_loop = state.get("core_loop")
 
-    # Record creator message in blob
+    # Record creator message in blob + DB
     blob.store(
         event_type="chat_creator",
         content=body.message,
         metadata={"role": "creator"},
     )
-
-    # Store in DB
     from jarvis.models import ChatMessage
     async with state["session_factory"]() as session:
         msg = ChatMessage(role="creator", content=body.message)
         session.add(msg)
         await session.commit()
 
-    # Build context: recent chat history + system prompt
-    chat_history = await _get_chat_history(state["session_factory"], limit=20)
-    current_state = await state_mgr.get_state()
-    budget_status = await budget.get_status()
+    if not core_loop:
+        return ChatResponse(
+            reply="Core loop is not running. Please wait for JARVIS to start.",
+            agentic=False,
+        )
 
-    system_prompt = build_chat_system_prompt(
-        directive=current_state["directive"],
-        budget_status=budget_status,
-    )
+    # Enqueue the message into the main loop — this wakes it immediately
+    pending = core_loop.enqueue_chat(body.message)
 
-    messages = [{"role": "system", "content": system_prompt}]
-    for entry in chat_history:
-        role = "user" if entry["role"] == "creator" else "assistant"
-        messages.append({"role": role, "content": entry["content"]})
+    # Wait for the loop iteration to complete and deliver the reply
+    # Timeout after 120 seconds (iterations with tool use can take a while)
+    try:
+        await asyncio.wait_for(pending.response_event.wait(), timeout=120.0)
+    except asyncio.TimeoutError:
+        return ChatResponse(
+            reply="I'm still processing your message — the current iteration is taking longer than expected. "
+                  "Check the dashboard for my response.",
+            agentic=True,
+        )
 
-    # Get JARVIS response
-    response = await llm_router.complete(
-        messages=messages,
-        tier="level2",
-        temperature=0.7,
-        max_tokens=2048,
-        task_description="chat_with_creator",
-    )
+    reply_text = pending.response_text
 
-    # Record JARVIS reply in blob
+    # Record JARVIS reply in blob + DB
     blob.store(
         event_type="chat_jarvis",
-        content=response.content,
-        metadata={"role": "jarvis", "model": response.model, "provider": response.provider},
+        content=reply_text,
+        metadata={"role": "jarvis", "agentic": True},
     )
-
-    # Store in DB
     async with state["session_factory"]() as session:
         msg = ChatMessage(
             role="jarvis",
-            content=response.content,
-            metadata_={"model": response.model, "provider": response.provider},
+            content=reply_text,
+            metadata_={"agentic": True, "actions": len(pending.actions_taken)},
         )
         session.add(msg)
         await session.commit()
@@ -323,19 +370,14 @@ async def chat(body: ChatRequest):
     await ws_manager.broadcast({
         "type": "chat_message",
         "role": "jarvis",
-        "content": response.content[:200],
+        "content": reply_text[:200],
+        "agentic": True,
     })
 
-    # Wake the core loop so JARVIS processes any implications quickly
-    core_loop = state.get("core_loop")
-    if core_loop:
-        core_loop.wake()
-
     return ChatResponse(
-        reply=response.content,
-        model=response.model,
-        provider=response.provider,
-        tokens_used=response.total_tokens,
+        reply=reply_text,
+        actions_taken=pending.actions_taken if pending.actions_taken else None,
+        agentic=True,
     )
 
 
@@ -374,6 +416,190 @@ async def get_history(limit: int = 20):
     entries = state["blob"].read_recent(limit=200)
     git_entries = [e for e in entries if "git" in e.get("content", "").lower() or e.get("metadata", {}).get("tool") == "git"]
     return {"history": git_entries[:limit]}
+
+
+# ── Analytics ──────────────────────────────────────────────────────────
+
+@router.get("/analytics")
+async def get_analytics(range: str = "24h"):
+    """
+    Return time-series analytics data for charts.
+    Range: 1h, 6h, 24h, 7d, 30d
+    Returns buckets with: cost, tokens, model calls, tool calls, errors.
+    """
+    from datetime import timedelta
+    from sqlalchemy import text
+
+    state = get_app_state()
+    session_factory = state["session_factory"]
+
+    # Parse range into timedelta and bucket size
+    range_map = {
+        "1h":  (timedelta(hours=1),   "5 minutes",  300),
+        "6h":  (timedelta(hours=6),   "30 minutes", 1800),
+        "24h": (timedelta(hours=24),  "1 hour",     3600),
+        "7d":  (timedelta(days=7),    "6 hours",    21600),
+        "30d": (timedelta(days=30),   "1 day",      86400),
+    }
+    delta, bucket_label, bucket_secs = range_map.get(range, range_map["24h"])
+    since = datetime.now(timezone.utc) - delta
+    # SQLite stores timestamps without timezone — use compatible format
+    since_str = since.strftime("%Y-%m-%d %H:%M:%S")
+
+    async with session_factory() as session:
+        # 1. Budget usage time series (cost, tokens, model breakdown)
+        budget_rows = await session.execute(
+            text("""
+                SELECT
+                    timestamp, provider, model,
+                    input_tokens, output_tokens, cost_usd,
+                    task_description
+                FROM budget_usage
+                WHERE timestamp >= :since
+                ORDER BY timestamp
+            """),
+            {"since": since_str},
+        )
+        budget_data = budget_rows.fetchall()
+
+        # 2. Tool usage time series
+        tool_rows = await session.execute(
+            text("""
+                SELECT
+                    timestamp, tool_name, success,
+                    duration_ms, error
+                FROM tool_usage_log
+                WHERE timestamp >= :since
+                ORDER BY timestamp
+            """),
+            {"since": since_str},
+        )
+        tool_data = tool_rows.fetchall()
+
+    # Build time buckets
+    now = datetime.now(timezone.utc)
+    buckets = {}
+    t = since
+    while t <= now:
+        key = t.strftime("%Y-%m-%dT%H:%M")
+        buckets[key] = {
+            "time": key,
+            "cost": 0.0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "llm_calls": 0,
+            "tool_calls": 0,
+            "tool_errors": 0,
+            "models": {},
+            "providers": {},
+            "tools": {},
+        }
+        t += timedelta(seconds=bucket_secs)
+
+    def _bucket_key(ts_str):
+        """Find the right bucket for a timestamp."""
+        try:
+            if isinstance(ts_str, str):
+                # Handle SQLite format "2026-02-16 05:36:00" and ISO format
+                ts_clean = ts_str.replace("Z", "+00:00")
+                try:
+                    ts = datetime.fromisoformat(ts_clean)
+                except ValueError:
+                    ts = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+            else:
+                ts = ts_str
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+            # Find the bucket start
+            elapsed = (ts - since).total_seconds()
+            if elapsed < 0:
+                return None
+            bucket_idx = int(elapsed // bucket_secs)
+            bucket_start = since + timedelta(seconds=bucket_idx * bucket_secs)
+            return bucket_start.strftime("%Y-%m-%dT%H:%M")
+        except Exception:
+            return None
+
+    # Fill budget data into buckets
+    for row in budget_data:
+        ts, provider, model, inp_tok, out_tok, cost, task = row
+        key = _bucket_key(ts)
+        if key and key in buckets:
+            b = buckets[key]
+            b["cost"] += cost or 0
+            b["input_tokens"] += inp_tok or 0
+            b["output_tokens"] += out_tok or 0
+            b["llm_calls"] += 1
+            b["models"][model] = b["models"].get(model, 0) + 1
+            b["providers"][provider] = b["providers"].get(provider, 0) + 1
+
+    # Fill tool data into buckets
+    for row in tool_data:
+        ts, tool_name, success, duration, error = row
+        key = _bucket_key(ts)
+        if key and key in buckets:
+            b = buckets[key]
+            b["tool_calls"] += 1
+            if not success:
+                b["tool_errors"] += 1
+            b["tools"][tool_name] = b["tools"].get(tool_name, 0) + 1
+
+    # Convert to sorted list
+    series = sorted(buckets.values(), key=lambda x: x["time"])
+
+    # Compute summaries
+    total_cost = sum(b["cost"] for b in series)
+    total_llm = sum(b["llm_calls"] for b in series)
+    total_tools = sum(b["tool_calls"] for b in series)
+    total_errors = sum(b["tool_errors"] for b in series)
+    total_input = sum(b["input_tokens"] for b in series)
+    total_output = sum(b["output_tokens"] for b in series)
+
+    # Aggregate model/provider/tool counts across all buckets
+    all_models: dict[str, int] = {}
+    all_providers: dict[str, int] = {}
+    all_tools: dict[str, int] = {}
+    for b in series:
+        for m, c in b["models"].items():
+            all_models[m] = all_models.get(m, 0) + c
+        for p, c in b["providers"].items():
+            all_providers[p] = all_providers.get(p, 0) + c
+        for t, c in b["tools"].items():
+            all_tools[t] = all_tools.get(t, 0) + c
+
+    # Simplify series for the chart (remove nested dicts)
+    chart_series = []
+    for b in series:
+        chart_series.append({
+            "time": b["time"],
+            "cost": round(b["cost"], 6),
+            "input_tokens": b["input_tokens"],
+            "output_tokens": b["output_tokens"],
+            "llm_calls": b["llm_calls"],
+            "tool_calls": b["tool_calls"],
+            "tool_errors": b["tool_errors"],
+        })
+
+    return {
+        "range": range,
+        "bucket_label": bucket_label,
+        "since": since.isoformat(),
+        "summary": {
+            "total_cost": round(total_cost, 4),
+            "total_llm_calls": total_llm,
+            "total_tool_calls": total_tools,
+            "total_tool_errors": total_errors,
+            "error_rate": round(total_errors / total_tools * 100, 1) if total_tools > 0 else 0,
+            "total_input_tokens": total_input,
+            "total_output_tokens": total_output,
+            "models": all_models,
+            "providers": all_providers,
+            "tools": all_tools,
+        },
+        "series": chart_series,
+    }
 
 
 @router.get("/health")

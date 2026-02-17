@@ -18,6 +18,7 @@ from jarvis.core.state import StateManager
 from jarvis.core.planner import Planner
 from jarvis.core.executor import Executor
 from jarvis.core.loop import CoreLoop
+from jarvis.core.email_listener import EmailInboxListener
 from jarvis.core.watchdog import Watchdog
 from jarvis.api.routes import router as api_router
 from jarvis.api.websocket import ws_manager
@@ -44,6 +45,7 @@ async def lifespan(app: FastAPI):
             ("short_term_goals", "TEXT DEFAULT '[]'"),
             ("mid_term_goals", "TEXT DEFAULT '[]'"),
             ("long_term_goals", "TEXT DEFAULT '[]'"),
+            ("short_term_memories", "TEXT DEFAULT '[]'"),
         ]:
             try:
                 await conn.execute(
@@ -52,7 +54,16 @@ async def lifespan(app: FastAPI):
                 log.info("column_added", table="jarvis_state", column=col)
             except Exception:
                 pass  # Column already exists
-        # Create chat_messages table if needed (handled by create_all)
+        # Add currency column to provider_balances (safe to run repeatedly)
+        try:
+            await conn.execute(
+                __import__("sqlalchemy").text(
+                    "ALTER TABLE provider_balances ADD COLUMN currency VARCHAR(20) DEFAULT 'USD'"
+                )
+            )
+            log.info("column_added", table="provider_balances", column="currency")
+        except Exception:
+            pass  # Column already exists
     log.info("database_initialized")
 
     # 2. Initialize subsystems
@@ -73,9 +84,10 @@ async def lifespan(app: FastAPI):
     validator = SafetyValidator()
     router = LLMRouter(budget, blob_storage=blob)
     tools = ToolRegistry(vector, validator, budget_tracker=budget, llm_router=router, blob_storage=blob)
+    log.info("tools_available", tools=sorted(tools.get_tool_names()))
     state_manager = StateManager(async_session)
     planner = Planner(router, working, vector)
-    executor = Executor(tools, blob, file_logger)
+    executor = Executor(tools, blob, file_logger, session_factory=async_session)
 
     # 3. Configure git inside container
     await _configure_git()
@@ -115,6 +127,14 @@ async def lifespan(app: FastAPI):
     app_state["core_loop"] = core_loop
     app_state["loop_task"] = loop_task
 
+    # 6b. Start email inbox listener (disabled by default — enable via EMAIL_LISTENER_ENABLED=true)
+    email_listener = EmailInboxListener(
+        enqueue_fn=core_loop.enqueue_chat,
+        interval_seconds=settings.email_listener_interval_seconds,
+    )
+    email_listener.start()
+    app_state["email_listener"] = email_listener
+
     # 7. Start watchdog
     watchdog = Watchdog(state_manager, settings.heartbeat_timeout_seconds)
     watchdog.set_loop_task(loop_task, lambda: _restart_loop(core_loop))
@@ -130,6 +150,15 @@ async def lifespan(app: FastAPI):
     core_loop.stop()
     loop_task.cancel()
     watchdog_task.cancel()
+
+    # Stop email listener
+    try:
+        email_listener = app_state.get("email_listener")
+        if email_listener:
+            await email_listener.stop()
+    except Exception as e:
+        log.warning("email_listener_stop_failed", error=str(e))
+
     await engine.dispose()
 
 
@@ -164,6 +193,7 @@ def _restart_loop(core_loop: CoreLoop):
 
 
 app = FastAPI(title="JARVIS", version="0.1.1", lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_credentials=True, allow_methods=['*'], allow_headers=['*']);
 
 app.add_middleware(
     CORSMiddleware,
@@ -174,6 +204,7 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+from jarvis.tools.authentication import get_current_user;
 
 
 @app.websocket("/ws")

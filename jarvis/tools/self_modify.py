@@ -36,7 +36,7 @@ class SelfModifyTool(Tool):
     description = (
         "Read or modify JARVIS's own source code with version tracking and persistence. "
         "Changes are saved to both the live container AND /data/code/ (persists across restarts). "
-        "Actions: 'read', 'write', 'list', 'diff', 'commit', 'push', 'log', 'revert', 'redeploy'."
+        "Actions: 'read', 'write', 'list', 'diff', 'commit', 'push', 'pull', 'log', 'revert', 'redeploy'."
     )
     timeout_seconds = 120
 
@@ -69,6 +69,8 @@ class SelfModifyTool(Tool):
             return await self._commit(message or "JARVIS self-modification")
         elif action == "push":
             return await self._push(remote)
+        elif action == "pull":
+            return await self._pull()
         elif action == "log":
             return await self._log()
         elif action == "revert":
@@ -77,7 +79,7 @@ class SelfModifyTool(Tool):
             return await self._redeploy(message or "JARVIS self-modification redeploy")
         else:
             return ToolResult(success=False, output="",
-                              error=f"Unknown action: {action}. Use: read/write/list/diff/commit/push/log/revert/redeploy")
+                              error=f"Unknown action: {action}. Use: read/write/list/diff/commit/push/pull/log/revert/redeploy")
 
     # ── Read ───────────────────────────────────────────────────────────────
 
@@ -245,32 +247,88 @@ class SelfModifyTool(Tool):
             # Check if remote exists
             remotes = await self._run_git(["remote", "-v"], cwd)
             if not remotes.strip():
-                # Try env var first, then explicit parameter
                 repo_url = remote or os.environ.get("GITHUB_REPO")
                 if repo_url and "REPLACE" not in repo_url:
                     await self._run_git(["remote", "add", "origin", repo_url], cwd)
                     log.info("git_remote_added", url=repo_url)
                 else:
                     return ToolResult(success=False, output="",
-                                     error="No remote configured. Set GITHUB_REPO in .env or use: self_modify action=push remote=https://github.com/user/repo.git")
+                                     error="No remote configured. Set GITHUB_REPO in .env or use: self_modify action=push remote=https://...")
             elif remote:
-                # Update remote URL if explicitly given
                 await self._run_git(["remote", "set-url", "origin", remote], cwd)
 
-            # Push — try HEAD:main first (works regardless of local branch name)
+            # Try normal push first
             output = await self._run_git(["push", "-u", "origin", "HEAD:main"], cwd)
-            if "fatal" in output.lower() and "does not match" not in output.lower():
-                # Might need to force-push first time or push to master
+
+            # If rejected (non-fast-forward), try to pull --rebase then push
+            if "rejected" in output.lower() or "non-fast-forward" in output.lower() or "fetch first" in output.lower():
+                log.info("git_push_rejected_trying_pull", output=output[:200])
+
+                # Ensure we have a local branch to rebase onto
+                await self._run_git(["checkout", "-B", "main"], cwd)
+
+                # Fetch and rebase
+                fetch_output = await self._run_git(["fetch", "origin", "main"], cwd)
+                rebase_output = await self._run_git(["rebase", "origin/main"], cwd)
+
+                if "conflict" in rebase_output.lower():
+                    # Abort rebase and force push instead
+                    await self._run_git(["rebase", "--abort"], cwd)
+                    log.warning("git_rebase_conflict_force_pushing")
+                    output = await self._run_git(["push", "-u", "origin", "HEAD:main", "--force"], cwd)
+                else:
+                    # Rebase succeeded, try push again
+                    output = await self._run_git(["push", "-u", "origin", "HEAD:main"], cwd)
+
+            # If still failing (e.g. empty repo, first push), force push
+            if "fatal" in output.lower() or "error" in output.lower():
+                log.warning("git_push_fallback_force", output=output[:200])
                 output = await self._run_git(["push", "-u", "origin", "HEAD:main", "--force"], cwd)
+
+            success = "fatal" not in output.lower() and "error: " not in output.lower()
 
             if self.blob:
                 self.blob.store(
                     event_type="git_push",
                     content=f"Pushed to remote\n{output}",
-                    metadata={"remote": remote or "origin"},
+                    metadata={"remote": remote or "origin", "success": success},
                 )
 
-            return ToolResult(success=True, output=f"Push result:\n{output}")
+            return ToolResult(success=success, output=f"Push result:\n{output}",
+                              error=None if success else output)
+        except Exception as e:
+            return ToolResult(success=False, output="", error=str(e))
+
+    # ── Pull from GitHub ────────────────────────────────────────────────────
+
+    async def _pull(self) -> ToolResult:
+        """Pull latest changes from the remote git repository."""
+        try:
+            cwd = "/data/code/backend"
+            remotes = await self._run_git(["remote", "-v"], cwd)
+            if not remotes.strip():
+                return ToolResult(success=False, output="", error="No remote configured")
+
+            await self._run_git(["checkout", "-B", "main"], cwd)
+            output = await self._run_git(["pull", "origin", "main", "--rebase"], cwd)
+
+            if "conflict" in output.lower():
+                await self._run_git(["rebase", "--abort"], cwd)
+                return ToolResult(success=False, output=output,
+                                  error="Pull failed due to merge conflicts. Use force push instead.")
+
+            # Sync pulled code to live
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "rsync", "-a", "--delete", "--exclude=.git", "--exclude=__pycache__",
+                    cwd + "/", "/app/",
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                )
+                await proc.communicate()
+            except FileNotFoundError:
+                shutil.copytree(cwd, "/app", dirs_exist_ok=True)
+
+            return ToolResult(success=True, output=f"Pull result:\n{output}\nLive code updated.")
         except Exception as e:
             return ToolResult(success=False, output="", error=str(e))
 
@@ -396,8 +454,8 @@ class SelfModifyTool(Tool):
             "parameters": {
                 "action": {
                     "type": "string",
-                    "description": "One of: read, write, list, diff, commit, push, log, revert, redeploy",
-                    "enum": ["read", "write", "list", "diff", "commit", "push", "log", "revert", "redeploy"],
+                    "description": "One of: read, write, list, diff, commit, push, pull, log, revert, redeploy",
+                    "enum": ["read", "write", "list", "diff", "commit", "push", "pull", "log", "revert", "redeploy"],
                 },
                 "path": {"type": "string", "description": "File or directory path (e.g. /app/jarvis/core/loop.py)"},
                 "content": {"type": "string", "description": "File content (for 'write' action)"},

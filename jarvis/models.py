@@ -12,6 +12,7 @@ class JarvisState(Base):
     short_term_goals = Column(JSON, default=list)
     mid_term_goals = Column(JSON, default=list)
     long_term_goals = Column(JSON, default=list)
+    short_term_memories = Column(JSON, default=list)  # Rolling buffer of operational notes
     active_task = Column(Text, nullable=True)
     loop_iteration = Column(Integer, default=0)
     is_paused = Column(Boolean, default=False)
@@ -74,6 +75,7 @@ class ProviderBalance(Base):
     known_balance = Column(Float, nullable=True)                     # Last known account balance (user/JARVIS-provided)
     spent_tracked = Column(Float, default=0.0)                       # Spending tracked by our system since last balance update
     tier = Column(String(20), default="paid")                        # paid, free, unknown
+    currency = Column(String(20), default="USD")                     # USD, EUR, credits, requests, etc.
     notes = Column(Text, nullable=True)                              # e.g. "free tier, 1000 req/day"
     balance_updated_at = Column(DateTime(timezone=True), nullable=True)  # When balance was last set
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

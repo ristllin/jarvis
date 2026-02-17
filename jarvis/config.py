@@ -30,7 +30,20 @@ class Settings(BaseSettings):
     github_token: Optional[str] = None  # Personal Access Token for push/pull
     github_repo: Optional[str] = None   # e.g. https://github.com/user/jarvis.git
     gmail_address: Optional[str] = None
-    gmail_password: Optional[str] = None
+    gmail_user_password: Optional[str] = None  # Regular Gmail password (not for SMTP)
+    gmail_app_password: Optional[str] = None   # Gmail App Password (for SMTP/IMAP)
+
+    # SMTP (for send_email tool — defaults to Gmail SMTP)
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_use_starttls: bool = True
+    smtp_username: Optional[str] = None   # Falls back to gmail_address
+    smtp_password: Optional[str] = None   # Falls back to gmail_password (use App Password for Gmail)
+    smtp_from_address: Optional[str] = None  # Falls back to smtp_username/gmail_address
+
+    # Email inbox listener
+    email_listener_enabled: bool = False
+    email_listener_interval_seconds: int = 300  # 5 minutes
 
     # Initial directive
     initial_directive: str = (

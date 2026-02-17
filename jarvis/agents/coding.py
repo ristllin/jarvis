@@ -1,12 +1,18 @@
 """
 Coding Agent — A multi-turn LLM-powered subagent with Cursor/Claude-Code-style
-editing primitives. JARVIS's main agent can spawn this to do complex code work.
+editing primitives. JARVIS's main agent calls this to spawn a coding subagent
+that performs complex multi-file code changes.
 
 The agent runs a loop:
   1. LLM sees the task + file context + available primitives
   2. LLM responds with a JSON action
   3. We execute the action and feed the result back
   4. Repeat until LLM says "done" or max turns reached
+
+Supports:
+  - Skills loading (reusable knowledge/patterns)
+  - Planning mode (generate a plan for main agent approval)
+  - Full execution mode (plan + execute)
 """
 import os
 import re
@@ -65,6 +71,23 @@ Run a shell command. Use for: running tests, installing packages, git operations
 Delete a file.
 {"action": "delete_file", "path": "/app/jarvis/tools/old_tool.py"}
 
+### load_skill
+Load a skill (reusable knowledge/patterns) into your context.
+{"action": "load_skill", "name": "python-fastapi-patterns"}
+
+### list_skills
+List all available skills.
+{"action": "list_skills"}
+
+### write_skill
+Create or update a skill for future use.
+{"action": "write_skill", "name": "my-new-pattern", "content": "# My Pattern\\nDescription..."}
+
+### propose_plan
+Propose an implementation plan BEFORE making changes. Use for large/risky changes.
+The plan is returned to the main agent. If in plan_only mode, this ends the session.
+{"action": "propose_plan", "plan": {"summary": "What we'll do", "steps": ["Step 1", "Step 2"], "files_affected": ["file1.py"], "risks": "Any risks"}}
+
 ### done
 Signal that the task is complete.
 {"action": "done", "summary": "Created new_tool.py with X feature, updated registry.py to register it, added tests."}
@@ -75,6 +98,7 @@ Signal that the task is complete.
 - Always read a file before editing it
 - After making changes, run tests or at least validate with python -c import
 - Report what you changed in the done summary
+- If skills are loaded, follow the patterns and conventions they describe
 """
 
 
@@ -93,8 +117,23 @@ class CodingAgent:
         tier: str = "level2",
         max_turns: int = 25,
         temperature: float = 0.3,
+        skills: list[str] = None,
+        plan_only: bool = False,
+        approved_plan: dict = None,
     ) -> dict:
-        """Execute a coding task using multi-turn LLM + primitives loop."""
+        """Execute a coding task using multi-turn LLM + primitives loop.
+
+        Args:
+            task: Description of what to build/change/fix.
+            working_directory: Root directory for the work.
+            system_prompt: Optional custom system prompt additions.
+            tier: LLM tier to use.
+            max_turns: Maximum editing iterations.
+            temperature: LLM temperature.
+            skills: List of skill names to pre-load into context.
+            plan_only: If True, return after the agent proposes a plan (no execution).
+            approved_plan: If provided, skip planning and execute this approved plan.
+        """
 
         log.info("coding_agent_start", task=task[:100], tier=tier, max_turns=max_turns)
 
@@ -102,20 +141,44 @@ class CodingAgent:
             self.blob.store(
                 event_type="coding_agent_start",
                 content=f"Task: {task}",
-                metadata={"tier": tier, "max_turns": max_turns, "working_directory": working_directory},
+                metadata={
+                    "tier": tier, "max_turns": max_turns,
+                    "working_directory": working_directory,
+                    "skills": skills or [], "plan_only": plan_only,
+                },
             )
 
-        # Build system prompt
-        sys_prompt = self._build_system_prompt(system_prompt, working_directory)
+        # Build system prompt with skills
+        sys_prompt = self._build_system_prompt(system_prompt, working_directory, skills)
+
+        # Build initial user message
+        user_msg = f"## Task\n{task}\n\n"
+
+        if approved_plan:
+            user_msg += (
+                "## Approved Plan\n"
+                "The main agent has reviewed and approved this plan. Execute it now.\n\n"
+                f"```json\n{json.dumps(approved_plan, indent=2)}\n```\n\n"
+                "Begin by exploring the relevant files, then implement the plan step by step."
+            )
+        elif plan_only:
+            user_msg += (
+                "First, explore the relevant files to understand the codebase. "
+                "Then use `propose_plan` to create a detailed implementation plan. "
+                "Do NOT make any changes — only read files and propose a plan."
+            )
+        else:
+            user_msg += "Begin by exploring relevant files, then make the changes needed."
 
         messages = [
             {"role": "system", "content": sys_prompt},
-            {"role": "user", "content": f"## Task\n{task}\n\nBegin by exploring relevant files, then make the changes needed."},
+            {"role": "user", "content": user_msg},
         ]
 
         changes_made = []
         files_read = set()
         files_modified = set()
+        proposed_plan = None
 
         for turn in range(max_turns):
             try:
@@ -129,13 +192,30 @@ class CodingAgent:
 
                 action = self._parse_action(response.content)
                 if not action:
-                    # LLM didn't return valid JSON — treat as thinking, ask to continue
                     messages.append({"role": "assistant", "content": response.content})
                     messages.append({"role": "user", "content": "Please respond with a JSON action. Use 'done' if you're finished."})
                     continue
 
                 action_name = action.get("action", "")
                 log.info("coding_agent_action", turn=turn, action=action_name)
+
+                # Handle propose_plan
+                if action_name == "propose_plan":
+                    proposed_plan = action.get("plan", {})
+                    log.info("coding_agent_plan_proposed", plan_summary=str(proposed_plan.get("summary", ""))[:200])
+                    if plan_only:
+                        return {
+                            "success": True,
+                            "mode": "plan_only",
+                            "plan": proposed_plan,
+                            "summary": f"Plan proposed: {proposed_plan.get('summary', 'No summary')}",
+                            "turns": turn + 1,
+                            "files_read": list(files_read),
+                        }
+                    # In full mode, acknowledge plan and continue executing
+                    messages.append({"role": "assistant", "content": json.dumps(action)})
+                    messages.append({"role": "user", "content": "Plan noted. Now implement it step by step."})
+                    continue
 
                 if action_name == "done":
                     summary = action.get("summary", "Task completed.")
@@ -152,6 +232,7 @@ class CodingAgent:
                         "turns": turn + 1,
                         "files_modified": list(files_modified),
                         "changes": changes_made,
+                        "plan": proposed_plan,
                     }
 
                 # Execute the primitive
@@ -168,7 +249,7 @@ class CodingAgent:
                 messages.append({"role": "assistant", "content": json.dumps(action)})
                 messages.append({"role": "user", "content": f"Result:\n{result[:8000]}"})
 
-                # Trim conversation if it gets too long (keep system + last N exchanges)
+                # Trim conversation if it gets too long
                 if len(messages) > 50:
                     messages = messages[:1] + messages[-40:]
 
@@ -184,15 +265,31 @@ class CodingAgent:
             "turns": max_turns,
             "files_modified": list(files_modified),
             "changes": changes_made,
+            "plan": proposed_plan,
         }
 
-    def _build_system_prompt(self, custom_prompt: str = None, working_directory: str = "/app") -> str:
+    def _build_system_prompt(self, custom_prompt: str = None, working_directory: str = "/app",
+                             skills: list[str] = None) -> str:
         parts = []
         parts.append("You are a coding agent — a skilled software engineer subagent of JARVIS.")
         parts.append(f"Working directory: {working_directory}")
         parts.append("")
+
+        # Load skills into context
+        if skills:
+            from jarvis.tools.skills import read_skill, list_skills
+            parts.append("## Loaded Skills\n")
+            for skill_name in skills:
+                content = read_skill(skill_name)
+                if content:
+                    parts.append(f"### Skill: {skill_name}\n{content}\n")
+                    log.info("coding_agent_skill_loaded", skill=skill_name)
+                else:
+                    parts.append(f"### Skill: {skill_name}\n(not found)\n")
+
         if custom_prompt:
             parts.append(f"## Additional Instructions\n{custom_prompt}\n")
+
         parts.append(PRIMITIVES_DESCRIPTION)
         parts.append("\n## Important")
         parts.append("- Respond with exactly ONE JSON action per turn.")
@@ -201,24 +298,21 @@ class CodingAgent:
         parts.append("- When done, use the 'done' action with a clear summary.")
         parts.append("- You can modify files under /app, /frontend, and /data.")
         parts.append("- You CANNOT modify /app/jarvis/safety/rules.py or /app/jarvis/observability/logger.py.")
+        parts.append("- Use load_skill to access reusable patterns. Use write_skill to save new patterns.")
         return "\n".join(parts)
 
     def _parse_action(self, content: str) -> dict | None:
         """Extract a JSON action from the LLM response."""
-        # Try direct JSON parse
         try:
             return json.loads(content)
         except json.JSONDecodeError:
             pass
-        # Try to find JSON block
         try:
-            # Look for ```json ... ``` blocks
             match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', content, re.DOTALL)
             if match:
                 return json.loads(match.group(1))
         except (json.JSONDecodeError, AttributeError):
             pass
-        # Try to find { ... } in the content
         try:
             start = content.find("{")
             end = content.rfind("}") + 1
@@ -250,6 +344,12 @@ class CodingAgent:
                 return await self._prim_shell(action.get("command", ""), working_dir)
             elif name == "delete_file":
                 return self._prim_delete_file(action.get("path", ""))
+            elif name == "load_skill":
+                return self._prim_load_skill(action.get("name", ""))
+            elif name == "list_skills":
+                return self._prim_list_skills()
+            elif name == "write_skill":
+                return self._prim_write_skill(action.get("name", ""), action.get("content", ""))
             else:
                 return f"Unknown action: {name}"
         except Exception as e:
@@ -290,7 +390,6 @@ class CodingAgent:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w") as f:
             f.write(content)
-        # Dual-write to backup
         self._backup_write(path, content)
         return f"Written {len(content)} bytes to {path}"
 
@@ -324,7 +423,6 @@ class CodingAgent:
         if after not in file_content:
             return f"ERROR: anchor string not found in {path}"
         idx = file_content.index(after) + len(after)
-        # Find end of line
         eol = file_content.find("\n", idx)
         if eol == -1:
             eol = len(file_content)
@@ -401,6 +499,37 @@ class CodingAgent:
             return f"File not found: {path}"
         os.remove(path)
         return f"Deleted {path}"
+
+    def _prim_load_skill(self, name: str) -> str:
+        """Load a skill into the agent's context."""
+        from jarvis.tools.skills import read_skill
+        if not name:
+            return "ERROR: skill name required"
+        content = read_skill(name)
+        if content is None:
+            return f"Skill '{name}' not found. Use list_skills to see available skills."
+        log.info("coding_agent_skill_loaded_runtime", skill=name)
+        return f"## Skill: {name}\n\n{content}"
+
+    def _prim_list_skills(self) -> str:
+        """List all available skills."""
+        from jarvis.tools.skills import list_skills
+        skills = list_skills()
+        if not skills:
+            return "No skills available. Use write_skill to create one."
+        lines = [f"{len(skills)} skill(s) available:"]
+        for s in skills:
+            lines.append(f"- {s['name']}: {s['title']} ({s['size']} bytes)")
+        return "\n".join(lines)
+
+    def _prim_write_skill(self, name: str, content: str) -> str:
+        """Write a new skill."""
+        from jarvis.tools.skills import write_skill
+        if not name or not content:
+            return "ERROR: both name and content are required"
+        path = write_skill(name, content)
+        log.info("coding_agent_skill_written", skill=name, path=path)
+        return f"Skill '{name}' saved to {path}"
 
     def _backup_write(self, path: str, content: str):
         """Dual-write to persistent backup in /data/code/."""
