@@ -9,6 +9,9 @@ from jarvis.observability.logger import get_logger
 
 log = get_logger("llm_router")
 
+# Maps coding tier requests to their definitions + fallback chain
+CODING_TIER_ORDER = ["coding_level1", "coding_level2", "coding_level3", "level3", "local_only"]
+
 # Tier definitions: maps tier -> list of (provider_name, model, cost_tier)
 # Free providers (Mistral, Ollama) appear in every tier as fallbacks
 # so they're always reachable even when paid budget is exhausted.
@@ -36,6 +39,28 @@ DEFAULT_TIERS = {
     ],
 }
 
+# Coding-specific tier: Devstral models optimized for agentic coding
+# Used by the coding agent when tier specifies "coding_*"
+CODING_TIERS = {
+    "coding_level1": [
+        ("mistral", "devstral-medium-2507", "free"),   # Best coding model, free
+        ("anthropic", "claude-opus-4-6", "high"),
+        ("openai", "gpt-5.2", "high"),
+        ("mistral", "mistral-large-latest", "free"),
+    ],
+    "coding_level2": [
+        ("mistral", "devstral-small-2507", "free"),    # Good coding, free
+        ("mistral", "devstral-medium-2507", "free"),
+        ("anthropic", "claude-sonnet-4-20250514", "medium"),
+        ("mistral", "mistral-large-latest", "free"),
+    ],
+    "coding_level3": [
+        ("mistral", "devstral-small-2507", "free"),
+        ("mistral", "mistral-small-latest", "free"),
+        ("openai", "gpt-4o-mini", "low"),
+    ],
+}
+
 
 class LLMRouter:
     """Routes LLM requests to the best available provider based on budget and tier."""
@@ -44,7 +69,7 @@ class LLMRouter:
         self.budget = budget_tracker
         self.blob = blob_storage  # Set after init via set_blob
         self.providers: dict[str, LLMProvider] = {}
-        self.tiers = dict(DEFAULT_TIERS)
+        self.tiers = {**DEFAULT_TIERS, **CODING_TIERS}
         self._init_providers()
 
     def set_blob(self, blob_storage):
@@ -84,12 +109,26 @@ class LLMRouter:
             prefer_free: If True, reorder candidates to try free providers first
                          (useful when budget is tight but quality still matters).
         """
-        tier_order = ["level1", "level2", "level3", "local_only"]
+        # Determine which tier chain to use
+        is_coding_tier = tier.startswith("coding_")
+        if is_coding_tier:
+            tier_order = CODING_TIER_ORDER
+        else:
+            tier_order = ["level1", "level2", "level3", "local_only"]
 
         # Check budget and potentially downgrade tier
         recommended = await self.budget.get_recommended_tier()
         original_tier = tier
-        if tier_order.index(recommended) > tier_order.index(tier):
+
+        # For coding tiers, map the recommended tier to its coding equivalent
+        if is_coding_tier:
+            coding_recommended = f"coding_{recommended}" if not recommended.startswith("coding_") else recommended
+            if coding_recommended in tier_order and tier_order.index(coding_recommended) > tier_order.index(tier):
+                recommended = coding_recommended
+            else:
+                recommended = tier  # Don't downgrade coding tiers (they're mostly free)
+
+        if not is_coding_tier and tier_order.index(recommended) > tier_order.index(tier):
             # Apply min_tier floor — never downgrade below it
             if min_tier and tier_order.index(recommended) > tier_order.index(min_tier):
                 tier = min_tier

@@ -23,6 +23,10 @@ PRICING = {
         # Mistral free tier — no dollar cost to us (usage-limited, not pay-per-token)
         "mistral-large-latest": {"input": 0.0, "output": 0.0},
         "mistral-small-latest": {"input": 0.0, "output": 0.0},
+        # Devstral coding models — also free on Mistral API
+        "devstral-small-2505": {"input": 0.0, "output": 0.0},
+        "devstral-small-2507": {"input": 0.0, "output": 0.0},
+        "devstral-medium-2507": {"input": 0.0, "output": 0.0},
     },
     "ollama": {
         "default": {"input": 0.0, "output": 0.0},

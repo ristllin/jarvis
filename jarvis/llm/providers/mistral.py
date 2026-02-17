@@ -4,6 +4,19 @@ from jarvis.observability.logger import get_logger
 
 log = get_logger("llm.mistral")
 
+# Devstral models — specialized for agentic coding tasks
+# Free on Mistral API, 256k context, 72.2% SWE-Bench Verified
+DEVSTRAL_MODELS = [
+    "devstral-small-2505",
+    "devstral-small-2507",
+    "devstral-medium-2507",
+]
+
+GENERAL_MODELS = [
+    "mistral-large-latest",
+    "mistral-small-latest",
+]
+
 
 class MistralProvider(LLMProvider):
     name = "mistral"
@@ -21,7 +34,7 @@ class MistralProvider(LLMProvider):
         return bool(settings.mistral_api_key)
 
     def get_models(self) -> list[str]:
-        return ["mistral-large-latest", "mistral-small-latest"]
+        return GENERAL_MODELS + DEVSTRAL_MODELS
 
     async def complete(
         self,
