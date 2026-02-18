@@ -15,9 +15,6 @@ from jarvis.observability.logger import get_logger
 log = get_logger("api")
 
 router = APIRouter(prefix="/api")
-# Integrate data visualization libraries for displaying trends
-# import Chart from 'chart.js';
-# import D3 from 'd3';
 
 
 def get_app_state():

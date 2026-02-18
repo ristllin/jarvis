@@ -41,12 +41,11 @@ class CodingAgentTool(Tool):
         task: str,
         system_prompt: str = None,
         working_directory: str = "/app",
-        tier: str = "coding_level2",
-        max_turns: int = 50,
+        tier: str = "level2",
+        max_turns: int = 25,
         skills: list = None,
         plan_only: bool = False,
         approved_plan: dict = None,
-        continuation_context: list = None,
         **kwargs,
     ) -> ToolResult:
         try:
@@ -59,7 +58,6 @@ class CodingAgentTool(Tool):
                 skills=skills or [],
                 plan_only=plan_only,
                 approved_plan=approved_plan,
-                continuation_context=continuation_context,
             )
 
             output = json.dumps(result, indent=2)
@@ -97,16 +95,11 @@ class CodingAgentTool(Tool):
                 },
                 "tier": {
                     "type": "string",
-                    "description": (
-                        "LLM tier for the coding agent. Defaults to 'coding_level2' which uses Devstral "
-                        "(free, optimized for coding). Options: 'coding_level1' (best coding model, free), "
-                        "'coding_level2' (good balance, free), 'coding_level3' (lightest, free), "
-                        "or standard tiers 'level1'/'level2'/'level3' for non-Devstral models."
-                    ),
+                    "description": "LLM tier: level1 (strongest), level2 (default, good balance), level3 (cheapest)",
                 },
                 "max_turns": {
                     "type": "integer",
-                    "description": "Maximum editing iterations (default: 50). Use higher for complex tasks.",
+                    "description": "Maximum editing iterations (default: 25)",
                 },
                 "skills": {
                     "type": "array",
@@ -129,14 +122,6 @@ class CodingAgentTool(Tool):
                     "description": (
                         "A previously proposed plan (from plan_only=true) that you've reviewed "
                         "and approved. The agent will execute this plan directly."
-                    ),
-                },
-                "continuation_context": {
-                    "type": "array",
-                    "description": (
-                        "Resume a previous coding session. Pass the 'continuation_context' "
-                        "from a previous result that hit max_turns. The agent will continue "
-                        "where it left off with full context of what was already done."
                     ),
                 },
             },

@@ -193,7 +193,6 @@ def _restart_loop(core_loop: CoreLoop):
 
 
 app = FastAPI(title="JARVIS", version="0.1.1", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_credentials=True, allow_methods=['*'], allow_headers=['*']);
 
 app.add_middleware(
     CORSMiddleware,
@@ -204,7 +203,6 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
-from jarvis.tools.authentication import get_current_user;
 
 
 @app.websocket("/ws")

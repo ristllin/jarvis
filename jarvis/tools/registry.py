@@ -14,8 +14,6 @@ from jarvis.tools.coding_agent import CodingAgentTool
 from jarvis.tools.resource_manager import ResourceManagerTool
 from jarvis.tools.send_email import SendEmailTool
 from jarvis.tools.skills import SkillsTool
-from jarvis.tools.http_request import HttpRequestTool
-from jarvis.tools.env_manager import EnvManagerTool
 from jarvis.memory.vector import VectorMemory
 from jarvis.safety.validator import SafetyValidator
 from jarvis.observability.logger import get_logger
@@ -48,8 +46,6 @@ class ToolRegistry:
             SelfModifyTool(blob_storage=blob_storage),
             SendEmailTool(),
             SkillsTool(),
-            HttpRequestTool(),
-            EnvManagerTool(),
         ]
         if budget_tracker:
             default_tools.append(BudgetQueryTool(budget_tracker))

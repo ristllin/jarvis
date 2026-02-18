@@ -244,17 +244,13 @@ class Planner:
         self.working.add_message("user", iteration_msg)
 
         # Call LLM at the triage-selected tier
-        # For creator chat: enforce min_tier=level1 so budget never downgrades below it
-        # For autonomous planning: enforce min_tier=level2 so we never fall to junk models
-        is_chat = bool(creator_messages)
         messages = self.working.get_messages_for_llm()
         response = await self.router.complete(
             messages=messages,
             tier=tier,
             temperature=0.7,
             max_tokens=4096,
-            task_description="planning" if not is_chat else "chat_iteration",
-            min_tier="level1" if is_chat else "level2",
+            task_description="planning" if not creator_messages else "chat_iteration",
         )
 
         # Parse response
