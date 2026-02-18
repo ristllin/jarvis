@@ -16,9 +16,9 @@ from jarvis.observability.logger import get_logger, FileLogger
 
 log = get_logger("core_loop")
 
-# Sleep bounds
+# Sleep bounds — kept short because free models (Mistral, Devstral, Ollama) are always available
 MIN_SLEEP_SECONDS = 10
-MAX_SLEEP_SECONDS = 3600  # 1 hour
+MAX_SLEEP_SECONDS = 600   # 10 minutes max (free models mean never fully hibernate)
 DEFAULT_SLEEP_SECONDS = 30
 
 
@@ -111,37 +111,51 @@ class CoreLoop:
 
         return "\n".join(lines)
 
+    def _has_free_providers(self, budget_status: dict) -> bool:
+        """Check if any free LLM providers are available."""
+        for p in budget_status.get("providers", []):
+            if p.get("tier") == "free":
+                return True
+        return False
+
     def _compute_sleep(self, plan: dict, budget_status: dict) -> float:
-        """Determine how long to sleep based on JARVIS's request and budget."""
+        """Determine how long to sleep based on JARVIS's request and budget.
+
+        Key principle: if free providers (Mistral, Devstral, Ollama) are available,
+        NEVER auto-throttle to long sleeps. Free models cost nothing — JARVIS should
+        stay active and productive using them even when paid budget is depleted.
+        """
+        has_free = self._has_free_providers(budget_status)
+
         # 1. Check if JARVIS explicitly requested a sleep duration
         requested = plan.get("sleep_seconds")
         if requested is not None:
             try:
                 requested = float(requested)
-                sleep = max(MIN_SLEEP_SECONDS, min(MAX_SLEEP_SECONDS, requested))
-                log.info("sleep_requested", requested=requested, actual=sleep)
+                # Cap sleep when free providers exist — JARVIS tends to over-conserve
+                effective_max = 120 if has_free else MAX_SLEEP_SECONDS
+                sleep = max(MIN_SLEEP_SECONDS, min(effective_max, requested))
+                if sleep != requested:
+                    log.info("sleep_capped", requested=requested, actual=sleep,
+                             reason="free_providers_available" if has_free else "max_limit")
+                else:
+                    log.info("sleep_requested", requested=requested, actual=sleep)
                 return sleep
             except (TypeError, ValueError):
                 pass
 
-        # 2. Budget-aware auto-throttle
-        pct_used = budget_status.get("percent_used", 0)
+        # 2. Budget-aware auto-throttle — but ONLY if no free providers exist
         remaining = budget_status.get("remaining", 100.0)
 
-        if remaining <= 1.0:
-            # Almost out of budget — sleep long, only wake for chat
+        if remaining <= 1.0 and not has_free:
             return MAX_SLEEP_SECONDS
-        elif pct_used > 90:
-            return 600  # 10 minutes
-        elif pct_used > 75:
-            return 180  # 3 minutes
-        elif pct_used > 50:
-            return 60   # 1 minute
+        elif remaining <= 1.0 and has_free:
+            return 60  # Free models available — stay active, just pace yourself
 
-        # 3. If JARVIS had no actions, increase sleep (nothing to do)
+        # 3. If JARVIS had no actions, moderate sleep (not too long)
         actions = plan.get("actions", [])
         if not actions:
-            return 120  # 2 minutes if idle
+            return 60 if has_free else 120
 
         # 4. Default
         return DEFAULT_SLEEP_SECONDS

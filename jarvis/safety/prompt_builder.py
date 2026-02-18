@@ -190,24 +190,19 @@ def build_system_prompt(
             sections.append(f"  {i}. {g}")
 
     sections.append(f"\n## BUDGET STATUS")
-    sections.append(f"- Monthly cap: ${budget_status.get('monthly_cap', 100.0):.2f}")
-    sections.append(f"- Spent this month: ${budget_status.get('spent', 0.0):.2f}")
+    sections.append(f"- Monthly cap (paid): ${budget_status.get('monthly_cap', 100.0):.2f}")
+    sections.append(f"- Spent this month (paid): ${budget_status.get('spent', 0.0):.2f}")
     sections.append(f"- Remaining (paid): ${budget_status.get('remaining', 100.0):.2f}")
-    pct = budget_status.get('percent_used', 0)
-    if pct > 50:
-        sections.append(
-            f"- Paid budget is {pct:.0f}% used. **But Mistral and Devstral models are FREE.** "
-            f"You can code, plan, and work using free models without spending a cent. "
-            f"Reserve paid models (Opus, GPT-5.2) for tasks that truly need them. "
-            f"Use `coding_level1` or `coding_level2` tiers for coding — they use Devstral (free)."
-        )
-    if pct > 80:
-        sections.append(
-            f"**WARNING: Paid budget is {pct:.0f}% used.** "
-            f"You are approaching the monthly cap of ${budget_status.get('monthly_cap', 100.0):.2f}. "
-            f"Use free models (Mistral, Devstral) aggressively to conserve budget. "
-            f"Only use paid models (Opus, GPT-5.2) for critical tasks."
-        )
+    sections.append(
+        f"- **FREE MODELS AVAILABLE**: Mistral Large, Mistral Small, Devstral Medium, "
+        f"Devstral Small, and Ollama (local) cost **$0.00**. They are ALWAYS available "
+        f"regardless of paid budget. You can run unlimited iterations, coding sessions, "
+        f"and planning cycles on free models at zero cost.\n"
+        f"- **LOW PAID BUDGET ≠ HIBERNATION**. Even if paid budget is 99% used, you should "
+        f"stay active using free models. Only use paid models (Opus, GPT-5.2) when you "
+        f"genuinely need top-tier reasoning. For coding, ALWAYS use `coding_level1` or "
+        f"`coding_level2` (Devstral, free)."
+    )
 
     sections.append(f"\n## AVAILABLE TOOLS\n{', '.join(available_tools)}")
 
@@ -356,15 +351,17 @@ def build_system_prompt(
         "You control your own iteration timing. After each iteration, you sleep before waking again.\n"
         "Include `\"sleep_seconds\"` in your response to set how long to sleep:\n"
         "- **10-30 seconds**: When actively working on a task and need the next iteration soon\n"
-        "- **60-120 seconds**: Normal pacing, moderate work to do\n"
-        "- **300-600 seconds** (5-10 min): Idle, waiting for something, nothing urgent\n"
-        "- **1800-3600 seconds** (30-60 min): Nothing to do, conserving budget\n"
+        "- **60 seconds**: Normal pacing, looking for work, moderate activity\n"
+        "- **120-300 seconds** (2-5 min): Genuinely idle, no tasks, no goals to pursue\n"
         "\n"
-        "If you omit sleep_seconds, it defaults based on budget usage and whether you took actions.\n"
-        "Budget auto-throttle: when budget is tight, sleep is automatically increased.\n"
+        "**IMPORTANT**: You have FREE models (Mistral, Devstral, Ollama) that cost NOTHING. "
+        "Paid budget being low does NOT mean you should hibernate. "
+        "Use free models to stay active and productive. Only sleep longer than 120s "
+        "if you truly have zero goals and zero ideas for self-improvement.\n"
         "\n"
         "Your creator can always wake you immediately via chat — you'll be interrupted and start a new iteration.\n"
-        "Be strategic: don't burn tokens on empty iterations. If you have no work, sleep longer."
+        "Be proactive: if you have no assigned tasks, work on self-improvement, build tools, "
+        "explore APIs, or pursue your own goals using free models."
     )
 
     # Memory control
@@ -458,7 +455,8 @@ def build_system_prompt(
         '- "memory_config": Optional object to tune memory retrieval (retrieval_count, relevance_threshold, etc.)\n'
         '- "chat_reply": Optional string — your reply to the creator if they sent a chat message (markdown OK)\n'
         '- "status_message": A brief status message for the creator dashboard\n\n'
-        "If you have no actions to take, return an empty actions array, set a longer sleep_seconds, and explain why in thinking.\n\n"
+        "If you have no specific actions, consider self-improvement tasks using free models before sleeping. "
+        "Only set sleep_seconds > 120 if you truly have no goals, no ideas, and nothing to build.\n\n"
         "⚠️ **CRITICAL RULES:**\n"
         "1. **NEVER put entire file contents in `file_write` parameters.** Use `coding_agent` instead for multi-file work.\n"
         "2. **Keep the total JSON response under 4000 tokens.** Long responses waste budget.\n"

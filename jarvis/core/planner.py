@@ -22,7 +22,6 @@ Respond with ONLY a JSON object:
 }
 
 Guidelines:
-- "idle" / level3: Nothing to do, no chat, no urgent goals. Return needs_full_plan=false with quick_action to just sleep.
 - "low" / level3: Simple routine checks, basic tool calls. A small model can handle it.
 - "medium" / level2: Moderate tasks — research, file edits, multi-step plans. Needs a capable model.
 - "high" / level1: Complex reasoning, architecture decisions, creator chat, coding agent tasks, self-modification. Needs the best model.
@@ -32,6 +31,15 @@ ALWAYS escalate to "high" / level1 if:
 - Self-modification or deployment is needed
 - Complex multi-step coding is required
 - Strategic planning or goal revision is needed
+
+CRITICAL — BUDGET RULES:
+- The agent has FREE LLM providers (Mistral, Devstral, Ollama) that cost NOTHING.
+- PAID budget percentage does NOT matter if free providers exist.
+- Even if paid budget shows 95% used, the agent can still work productively using free models.
+- Do NOT return "idle" or needs_full_plan=false just because the budget looks low.
+- If there are active goals or tasks, ALWAYS set needs_full_plan=true so the agent can work on them.
+- Only return needs_full_plan=false if goals are genuinely empty AND no tasks are pending.
+- When setting quick_action sleep, use short times (30-60s) not long hibernation (300+).
 """
 
 
@@ -46,6 +54,7 @@ class Planner:
         self._max_sig_history = 10
         self._repeat_threshold = 3  # 3+ identical plans = stuck
         self.vector = vector_memory
+        self._consecutive_triage_only = 0  # Track triage-only iterations for forced escalation
 
     async def plan(self, state: dict, budget_status: dict, tool_names: list[str],
                    creator_messages: list[str] | None = None) -> dict:
@@ -71,23 +80,42 @@ class Planner:
                      needs_full_plan=triage.get("needs_full_plan"),
                      reason=triage.get("reason", ""))
 
-        # If triage says no full plan needed, return a minimal plan
+        # If triage says no full plan needed, check for forced escalation
         if not triage.get("needs_full_plan", True):
-            quick = triage.get("quick_action", {}) or {}
-            plan = {
-                "thinking": f"[triage] {triage.get('reason', 'idle')}",
-                "actions": [],
-                "sleep_seconds": quick.get("sleep_seconds", 300),
-                "status_message": quick.get("status_message", "Idle — conserving budget"),
-                "_triage": triage,
-                "_response_model": "triage-only",
-                "_response_provider": "triage-only",
-                "_response_tokens": 0,
-            }
-            log.info("plan_from_triage", sleep=plan["sleep_seconds"])
-            return plan
+            self._consecutive_triage_only += 1
+
+            # Force a full plan every 5 triage-only iterations using free models
+            # This ensures JARVIS periodically does a real self-assessment
+            # and finds work to do rather than endlessly idling
+            if self._consecutive_triage_only >= 5:
+                log.info("forced_escalation",
+                         consecutive_triage_only=self._consecutive_triage_only,
+                         reason="periodic self-assessment with free model")
+                self._consecutive_triage_only = 0
+                triage["complexity"] = "medium"
+                triage["tier"] = "level3"  # Use free model (Mistral Small) for the check
+                triage["needs_full_plan"] = True
+                triage["reason"] = (
+                    f"Forced periodic assessment after {self._consecutive_triage_only + 5} "
+                    f"idle iterations. Check goals, find productive work using free models."
+                )
+            else:
+                quick = triage.get("quick_action", {}) or {}
+                plan = {
+                    "thinking": f"[triage] {triage.get('reason', 'idle')}",
+                    "actions": [],
+                    "sleep_seconds": quick.get("sleep_seconds", 60),
+                    "status_message": quick.get("status_message", "Idle — checking for work"),
+                    "_triage": triage,
+                    "_response_model": "triage-only",
+                    "_response_provider": "triage-only",
+                    "_response_tokens": 0,
+                }
+                log.info("plan_from_triage", sleep=plan["sleep_seconds"])
+                return plan
 
         # Phase 2: Full planning with the tier chosen by triage
+        self._consecutive_triage_only = 0  # Reset — we're doing a real plan
         selected_tier = triage.get("tier", "level2")
         return await self._full_plan(state, budget_status, tool_names,
                                      creator_messages, selected_tier, triage)
@@ -205,7 +233,8 @@ class Planner:
             f"For each action, you can specify \"tier\": \"level1\"|\"level2\"|\"level3\" to control "
             f"which model handles that tool (e.g. coding_agent with tier=level1 for hard tasks, level2 for simpler ones). "
             f"Set sleep_seconds to control when you wake next (10-3600). "
-            f"If you have nothing to do, set a long sleep and conserve budget."
+            f"Remember: Mistral, Devstral, and Ollama are FREE — use them to stay productive "
+            f"even when paid budget is low. Only sleep long if you truly have zero goals or tasks."
         )
 
         # Inject short-term memories (operational notes from recent iterations)
@@ -244,13 +273,17 @@ class Planner:
         self.working.add_message("user", iteration_msg)
 
         # Call LLM at the triage-selected tier
+        # For creator chat: enforce min_tier=level1 so budget never downgrades below it
+        # For autonomous planning: enforce min_tier=level2 so we never fall to junk models
+        is_chat = bool(creator_messages)
         messages = self.working.get_messages_for_llm()
         response = await self.router.complete(
             messages=messages,
             tier=tier,
             temperature=0.7,
             max_tokens=4096,
-            task_description="planning" if not creator_messages else "chat_iteration",
+            task_description="planning" if not is_chat else "chat_iteration",
+            min_tier="level1" if is_chat else "level2",
         )
 
         # Parse response
@@ -321,9 +354,10 @@ class Planner:
         if no_action_count >= 4:
             return (
                 "You've had no actions for 4+ iterations in a row. "
-                "If you're truly idle, set sleep_seconds to 3600 to conserve budget. "
-                "If you're trying to do something but can't, explain what's blocking you "
-                "in your thinking and update your goals."
+                "Don't just sleep — you have FREE models (Mistral, Devstral, Ollama). "
+                "Find something productive: improve your code, build a new tool, "
+                "research something useful, write skills, or work on your goals. "
+                "If you genuinely have no goals, CREATE some — you're an autonomous agent."
             )
 
         return None
