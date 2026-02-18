@@ -16,6 +16,7 @@ from jarvis.tools.send_email import SendEmailTool
 from jarvis.tools.skills import SkillsTool
 from jarvis.tools.http_request import HttpRequestTool
 from jarvis.tools.env_manager import EnvManagerTool
+from jarvis.tools.coingecko import CoinGeckoTool
 from jarvis.memory.vector import VectorMemory
 from jarvis.safety.validator import SafetyValidator
 from jarvis.observability.logger import get_logger
@@ -49,6 +50,7 @@ class ToolRegistry:
             SendEmailTool(),
             SkillsTool(),
             HttpRequestTool(),
+            CoinGeckoTool(),
             EnvManagerTool(),
         ]
         if budget_tracker:

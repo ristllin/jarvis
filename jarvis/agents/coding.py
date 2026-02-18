@@ -207,9 +207,16 @@ class CodingAgent:
                     task_description=f"coding_agent:turn_{turn}",
                 )
 
-                action = self._parse_action(response.content)
+                # Guard against empty responses (Mistral API rejects empty assistant messages)
+                content = response.content or ""
+                if not content.strip():
+                    messages.append({"role": "assistant", "content": "(empty response)"})
+                    messages.append({"role": "user", "content": "Your response was empty. Please respond with a JSON action. Use 'done' if you're finished."})
+                    continue
+
+                action = self._parse_action(content)
                 if not action:
-                    messages.append({"role": "assistant", "content": response.content})
+                    messages.append({"role": "assistant", "content": content})
                     messages.append({"role": "user", "content": "Please respond with a JSON action. Use 'done' if you're finished."})
                     continue
 
@@ -269,6 +276,12 @@ class CodingAgent:
                 # Trim conversation if it gets too long
                 if len(messages) > 50:
                     messages = messages[:1] + messages[-40:]
+
+                # Sanitize: ensure no empty assistant messages (Mistral rejects them)
+                messages = [
+                    m if m.get("content") else {**m, "content": "(continued)"}
+                    for m in messages
+                ]
 
             except Exception as e:
                 log.error("coding_agent_error", turn=turn, error=str(e))
