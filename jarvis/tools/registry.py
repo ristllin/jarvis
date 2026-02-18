@@ -12,15 +12,15 @@ from jarvis.tools.llm_config import LLMConfigTool
 from jarvis.tools.self_modify import SelfModifyTool
 from jarvis.tools.coding_agent import CodingAgentTool
 from jarvis.tools.resource_manager import ResourceManagerTool
-from jarvis.tools.credit_monitor import CreditMonitorTool
 from jarvis.tools.send_email import SendEmailTool
 from jarvis.tools.skills import SkillsTool
 from jarvis.tools.http_request import HttpRequestTool
 from jarvis.tools.env_manager import EnvManagerTool
-from jarvis.tools.coingecko import CoinGeckoTool
-from jarvis.tools.gmail_api import GmailAPITool
+from jarvis.tools.memory_config import MemoryConfigTool
 from jarvis.tools.news_monitor import NewsMonitorTool
+from jarvis.tools.credit_monitor import CreditMonitorTool
 from jarvis.memory.vector import VectorMemory
+from jarvis.memory.working import WorkingMemory
 from jarvis.safety.validator import SafetyValidator
 from jarvis.observability.logger import get_logger
 
@@ -31,14 +31,14 @@ class ToolRegistry:
     """Discovers, registers, and executes tools with logging and safety checks."""
 
     def __init__(self, vector_memory: VectorMemory, validator: SafetyValidator,
-                 budget_tracker=None, llm_router=None, blob_storage=None):
+                 budget_tracker=None, llm_router=None, blob_storage=None, working: WorkingMemory = None):
         self.tools: dict[str, Tool] = {}
         self.validator = validator
         self.blob = blob_storage
-        self._register_defaults(vector_memory, budget_tracker, llm_router, blob_storage)
+        self._register_defaults(vector_memory, budget_tracker, llm_router, blob_storage, working)
 
     def _register_defaults(self, vector_memory: VectorMemory,
-                           budget_tracker=None, llm_router=None, blob_storage=None):
+                           budget_tracker=None, llm_router=None, blob_storage=None, working: WorkingMemory = None):
         default_tools = [
             WebSearchTool(),
             WebBrowseTool(),
@@ -53,15 +53,15 @@ class ToolRegistry:
             SendEmailTool(),
             SkillsTool(),
             HttpRequestTool(),
-            CoinGeckoTool(),
             EnvManagerTool(),
-            GmailAPITool(),
             NewsMonitorTool(),
         ]
+        if working:
+            default_tools.append(MemoryConfigTool(working))
         if budget_tracker:
             default_tools.append(BudgetQueryTool(budget_tracker))
             default_tools.append(ResourceManagerTool(budget_tracker))
-            default_tools.append(CreditMonitorTool(budget_tracker))
+            default_tools.append(CreditMonitorTool(budget_tracker=budget_tracker))
         if llm_router:
             default_tools.append(LLMConfigTool(llm_router))
             default_tools.append(CodingAgentTool(llm_router, blob_storage=blob_storage))
@@ -70,8 +70,6 @@ class ToolRegistry:
             log.info("tool_registered", tool=tool.name)
 
     def register(self, tool: Tool):
-        if tool.name in self.tools:
-            raise ValueError(f'Tool with name {tool.name} is already registered.')
         self.tools[tool.name] = tool
         log.info("tool_registered", tool=tool.name)
 

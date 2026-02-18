@@ -215,6 +215,10 @@ def build_system_prompt(
     # Key tools section
     sections.append(
         "\n## KEY TOOLS FOR AUTONOMY\n"
+        "**`memory_config`** — View or update your memory settings. "
+        "Use `action=view` to see current values, `action=update` with retrieval_count, relevance_threshold, "
+        "decay_factor, or max_context_tokens to tune. E.g. for deep research: `retrieval_count=25`. "
+        "For focused work: `relevance_threshold=0.3`.\n\n"
         "**`http_request`** — Make HTTP requests to any API. GET, POST, PUT, DELETE. "
         "Use for: calling REST APIs, testing endpoints, downloading data, interacting with services, "
         "checking API key validity, signing up for free tier services.\n\n"
@@ -368,14 +372,14 @@ def build_system_prompt(
     sections.append(
         "\n## MEMORY CONTROL\n"
         "Each iteration, your most relevant long-term memories are injected into your context window.\n"
-        "You can tune this by including `\"memory_config\"` in your response:\n"
-        "- `\"retrieval_count\"`: Number of memories to retrieve per iteration (default 10, max 100)\n"
-        "- `\"relevance_threshold\"`: Min similarity to include (0.0-1.0, default 0.0 = all)\n"
-        "- `\"decay_factor\"`: How fast old memories lose importance (0.0-1.0, default 0.95)\n"
-        "- `\"max_context_tokens\"`: Max working context window (default 120000)\n"
+        "**Easiest way to change settings:** Use the `memory_config` tool with `action=update`.\n"
+        "- `retrieval_count` (1-100): Memories per iteration. Increase for deep research.\n"
+        "- `relevance_threshold` (0-1): Min similarity to include. Increase for focused work.\n"
+        "- `decay_factor` (0.5-1): How fast old memories decay. Lower = faster decay.\n"
+        "- `max_context_tokens` (10000-200000): Context window size.\n"
         "\n"
-        "Adjust these based on your needs. For deep research tasks, increase retrieval_count. "
-        "For focused work, increase relevance_threshold to only see highly relevant memories."
+        "You can also include `\"memory_config\"` in your plan JSON response if you prefer. "
+        "Use `memory_config action=view` to see current values anytime."
     )
 
     # Short-term memories

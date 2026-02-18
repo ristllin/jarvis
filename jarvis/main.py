@@ -83,7 +83,7 @@ async def lifespan(app: FastAPI):
 
     validator = SafetyValidator()
     router = LLMRouter(budget, blob_storage=blob)
-    tools = ToolRegistry(vector, validator, budget_tracker=budget, llm_router=router, blob_storage=blob)
+    tools = ToolRegistry(vector, validator, budget_tracker=budget, llm_router=router, blob_storage=blob, working=working)
     log.info("tools_available", tools=sorted(tools.get_tool_names()))
     state_manager = StateManager(async_session)
     planner = Planner(router, working, vector)
