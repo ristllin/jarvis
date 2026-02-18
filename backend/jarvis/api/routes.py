@@ -351,4 +351,7 @@ async def get_all_provider_usage_breakdown_by_model_by_day_by_hour_by_minute_by_
 
 
 @router.get("/provider/usage/breakdown/by-model/by-day/by-hour/by-minute/by-second/by-millisecond")
-async def get_provider_usage_breakdown_by_model
+async def get_provider_usage_breakdown_by_model():
+    """Get provider usage breakdown by model."""
+    state = get_app_state()
+    return await state["budget"].get_provider_usage_breakdown()
