@@ -3,6 +3,7 @@ from jarvis.llm.base import LLMProvider, LLMResponse
 from jarvis.llm.providers.anthropic import AnthropicProvider
 from jarvis.llm.providers.openai import OpenAIProvider
 from jarvis.llm.providers.mistral import MistralProvider
+from jarvis.llm.providers.grok import GrokProvider
 from jarvis.llm.providers.ollama import OllamaProvider
 from jarvis.budget.tracker import BudgetTracker
 from jarvis.observability.logger import get_logger
@@ -19,44 +20,50 @@ DEFAULT_TIERS = {
     "level1": [
         ("anthropic", "claude-opus-4-6", "high"),
         ("openai", "gpt-5.2", "high"),
-        ("mistral", "mistral-large-latest", "free"),  # Free tier — excellent fallback
+        ("grok", "grok-4-1-fast-reasoning", "low"),    # Very cheap ($0.20/$0.50 per M) + $25 free
+        ("mistral", "mistral-large-latest", "free"),
     ],
     "level2": [
         ("anthropic", "claude-sonnet-4-20250514", "medium"),
         ("openai", "gpt-4o", "medium"),
-        ("mistral", "mistral-large-latest", "free"),   # Free and very capable
+        ("grok", "grok-4-1-fast-non-reasoning", "low"), # Cheap, no reasoning overhead
+        ("mistral", "mistral-large-latest", "free"),
+        ("grok", "grok-3-mini", "low"),
         ("anthropic", "claude-haiku-35-20241022", "low"),
         ("mistral", "mistral-small-latest", "free"),
     ],
     "level3": [
-        ("mistral", "mistral-small-latest", "free"),   # Free first
+        ("mistral", "mistral-small-latest", "free"),
+        ("grok", "grok-3-mini", "low"),                 # Very cheap fallback
         ("openai", "gpt-4o-mini", "low"),
         ("ollama", "mistral:7b-instruct", "free"),
     ],
     "local_only": [
-        ("mistral", "mistral-small-latest", "free"),   # Mistral free tier before local
+        ("mistral", "mistral-small-latest", "free"),
         ("ollama", "mistral:7b-instruct", "free"),
     ],
 }
 
-# Coding-specific tier: Devstral models optimized for agentic coding
-# Used by the coding agent when tier specifies "coding_*"
+# Coding-specific tier: Devstral + Grok Code models optimized for coding
 CODING_TIERS = {
     "coding_level1": [
-        ("mistral", "devstral-medium-2507", "free"),   # Best coding model, free
+        ("mistral", "devstral-medium-2507", "free"),    # Best coding model, free
+        ("grok", "grok-code-fast-1", "low"),             # xAI code model, very cheap
+        ("grok", "grok-4-1-fast-reasoning", "low"),
         ("anthropic", "claude-opus-4-6", "high"),
-        ("openai", "gpt-5.2", "high"),
         ("mistral", "mistral-large-latest", "free"),
     ],
     "coding_level2": [
-        ("mistral", "devstral-small-2507", "free"),    # Good coding, free
+        ("mistral", "devstral-small-2507", "free"),
         ("mistral", "devstral-medium-2507", "free"),
+        ("grok", "grok-code-fast-1", "low"),
         ("anthropic", "claude-sonnet-4-20250514", "medium"),
         ("mistral", "mistral-large-latest", "free"),
     ],
     "coding_level3": [
         ("mistral", "devstral-small-2507", "free"),
         ("mistral", "mistral-small-latest", "free"),
+        ("grok", "grok-3-mini", "low"),
         ("openai", "gpt-4o-mini", "low"),
     ],
 }
@@ -81,6 +88,7 @@ class LLMRouter:
             AnthropicProvider(),
             OpenAIProvider(),
             MistralProvider(),
+            GrokProvider(),
             OllamaProvider(),
         ]
         for p in providers:

@@ -114,12 +114,13 @@ class CodingAgent:
         task: str,
         working_directory: str = "/app",
         system_prompt: str = None,
-        tier: str = "level2",
-        max_turns: int = 25,
+        tier: str = "coding_level2",
+        max_turns: int = 50,
         temperature: float = 0.3,
         skills: list[str] = None,
         plan_only: bool = False,
         approved_plan: dict = None,
+        continuation_context: list[dict] = None,
     ) -> dict:
         """Execute a coding task using multi-turn LLM + primitives loop.
 
@@ -127,12 +128,16 @@ class CodingAgent:
             task: Description of what to build/change/fix.
             working_directory: Root directory for the work.
             system_prompt: Optional custom system prompt additions.
-            tier: LLM tier to use.
-            max_turns: Maximum editing iterations.
+            tier: LLM tier to use. Defaults to "coding_level2" which prefers
+                  Devstral models (free, optimized for coding). Use "coding_level1"
+                  for the most capable coding model.
+            max_turns: Maximum editing iterations (default: 50).
             temperature: LLM temperature.
             skills: List of skill names to pre-load into context.
             plan_only: If True, return after the agent proposes a plan (no execution).
             approved_plan: If provided, skip planning and execute this approved plan.
+            continuation_context: If provided, resume from a previous session's context.
+                                  Contains the last few messages for continuity.
         """
 
         log.info("coding_agent_start", task=task[:100], tier=tier, max_turns=max_turns)
@@ -170,10 +175,22 @@ class CodingAgent:
         else:
             user_msg += "Begin by exploring relevant files, then make the changes needed."
 
-        messages = [
-            {"role": "system", "content": sys_prompt},
-            {"role": "user", "content": user_msg},
-        ]
+        if continuation_context:
+            # Resume from previous session — inject continuation context
+            messages = [{"role": "system", "content": sys_prompt}]
+            messages.extend(continuation_context[-20:])  # Last 20 messages for context
+            messages.append({"role": "user", "content": (
+                f"## Continuation\n"
+                f"You were working on this task but ran out of turns. Continue where you left off.\n\n"
+                f"Original task: {task}\n\n"
+                f"Pick up from where you stopped. Review what's already done and continue."
+            )})
+            log.info("coding_agent_continuing", context_messages=len(continuation_context))
+        else:
+            messages = [
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_msg},
+            ]
 
         changes_made = []
         files_read = set()
@@ -257,15 +274,22 @@ class CodingAgent:
                 log.error("coding_agent_error", turn=turn, error=str(e))
                 messages.append({"role": "user", "content": f"Error occurred: {str(e)}\nPlease continue or use 'done' if finished."})
 
-        # Hit max turns
-        log.warning("coding_agent_max_turns", max_turns=max_turns)
+        # Hit max turns — provide continuation context for resuming
+        log.warning("coding_agent_max_turns", max_turns=max_turns,
+                     files_modified=list(files_modified))
         return {
             "success": False,
-            "summary": f"Hit max turns ({max_turns}). Files modified: {list(files_modified)}",
+            "summary": (
+                f"Hit max turns ({max_turns}). Files modified: {list(files_modified)}. "
+                f"You can continue this task by calling coding_agent again with "
+                f"continuation_context from this result."
+            ),
             "turns": max_turns,
             "files_modified": list(files_modified),
             "changes": changes_made,
             "plan": proposed_plan,
+            "continuation_context": messages[-20:],  # Last 20 messages for resumption
+            "can_continue": True,
         }
 
     def _build_system_prompt(self, custom_prompt: str = None, working_directory: str = "/app",

@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     anthropic_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
     mistral_api_key: Optional[str] = None
+    grok_api_key: Optional[str] = None
     tavily_api_key: Optional[str] = None
 
     # Ollama
