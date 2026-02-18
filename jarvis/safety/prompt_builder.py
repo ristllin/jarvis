@@ -201,6 +201,13 @@ def build_system_prompt(
             f"Reserve paid models (Opus, GPT-5.2) for tasks that truly need them. "
             f"Use `coding_level1` or `coding_level2` tiers for coding — they use Devstral (free)."
         )
+    if pct > 80:
+        sections.append(
+            f"**WARNING: Paid budget is {pct:.0f}% used.** "
+            f"You are approaching the monthly cap of ${budget_status.get('monthly_cap', 100.0):.2f}. "
+            f"Use free models (Mistral, Devstral) aggressively to conserve budget. "
+            f"Only use paid models (Opus, GPT-5.2) for critical tasks."
+        )
 
     sections.append(f"\n## AVAILABLE TOOLS\n{', '.join(available_tools)}")
 

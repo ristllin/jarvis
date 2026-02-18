@@ -17,6 +17,7 @@ from jarvis.tools.skills import SkillsTool
 from jarvis.tools.http_request import HttpRequestTool
 from jarvis.tools.env_manager import EnvManagerTool
 from jarvis.tools.coingecko import CoinGeckoTool
+from jarvis.tools.gmail_api import GmailAPITool
 from jarvis.memory.vector import VectorMemory
 from jarvis.safety.validator import SafetyValidator
 from jarvis.observability.logger import get_logger
@@ -52,6 +53,7 @@ class ToolRegistry:
             HttpRequestTool(),
             CoinGeckoTool(),
             EnvManagerTool(),
+            GmailAPITool(),
         ]
         if budget_tracker:
             default_tools.append(BudgetQueryTool(budget_tracker))
@@ -64,6 +66,8 @@ class ToolRegistry:
             log.info("tool_registered", tool=tool.name)
 
     def register(self, tool: Tool):
+        if tool.name in self.tools:
+            raise ValueError(f'Tool with name {tool.name} is already registered.')
         self.tools[tool.name] = tool
         log.info("tool_registered", tool=tool.name)
 

@@ -217,13 +217,16 @@ class BudgetTracker:
                     "balance_updated_at": pb.balance_updated_at.isoformat() if pb.balance_updated_at else None,
                 })
 
-            # Overall remaining: use total_available from known balances if > 0, else use cap-based
-            if total_available > 0:
-                remaining = total_available
-                cap = total_available + spent
-            else:
+            # Overall remaining: use cap-based unless only non-USD providers are available
+            # If all providers are USD/EUR/GBP, use the cap and subtract spending
+            has_usd_provider = any(pb.currency in ("USD", "EUR", "GBP") for pb in provider_balances)
+            if has_usd_provider:
                 remaining = max(0, config.monthly_cap_usd - spent)
                 cap = config.monthly_cap_usd
+            else:
+                # Only non-USD providers (credits, requests): use total_available
+                remaining = total_available
+                cap = total_available + spent
 
             return {
                 "monthly_cap": round(cap, 2),

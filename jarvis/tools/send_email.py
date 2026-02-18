@@ -5,7 +5,20 @@ from email.mime.text import MIMEText
 
 from jarvis.config import settings
 from jarvis.tools.base import Tool, ToolResult
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+import base64
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+import os
+import pickle
 
+# OAuth2 scopes for Gmail API
+SCOPES = ['https://www.googleapis.com/auth/gmail.send']
+
+# Path to the token file
+TOKEN_PATH = os.path.join(os.path.dirname(__file__), 'gmail_token.pickle')
 
 class SendEmailTool(Tool):
     name = "send_email"
@@ -24,8 +37,7 @@ class SendEmailTool(Tool):
             "required": ["subject", "body", "to_email"],
         }
 
-    async def execute(self, subject: str = "", body: str = "", to_email: str = "",
-                      to: str = "", **kwargs) -> ToolResult:
+    async def execute(self, subject: str = "", body: str = "", to_email: str = "", to: str = "", **kwargs) -> ToolResult:
         # Accept both "to" and "to_email" (LLMs use different names)
         recipient = to_email or to or kwargs.get("recipient", "")
         if not recipient:
@@ -36,42 +48,35 @@ class SendEmailTool(Tool):
         if not body:
             return ToolResult(success=False, output="", error="Missing 'body' parameter")
 
-        # Prefer explicit SMTP settings; fall back to Gmail App Password
-        username = settings.smtp_username or settings.gmail_address
-        password = settings.smtp_password or settings.gmail_app_password
-        from_addr = settings.smtp_from_address or username
+        # Authenticate using OAuth2
+        creds = None
+        # Load existing token if available
+        if os.path.exists(TOKEN_PATH):
+            with open(TOKEN_PATH, 'rb') as token:
+                creds = pickle.load(token)
+        # If there are no valid credentials, let the user log in
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+                creds = flow.run_local_server(port=0)
 
-        if not username or not password or not from_addr:
-            return ToolResult(
-                success=False,
-                output="",
-                error=(
-                    "SMTP credentials must be set in configuration. Set smtp_username, smtp_password "
-                    "(and optionally smtp_from_address). For legacy support you can set gmail_address/gmail_password."
-                ),
-            )
+        # Save the credentials for the next run
+        with open(TOKEN_PATH, 'wb') as token:
+            pickle.dump(creds, token)
 
-        msg = MIMEMultipart()
-        msg["From"] = from_addr
-        msg["To"] = recipient
-        msg["Subject"] = subject
-        msg.attach(MIMEText(body, "plain"))
-
-        def _send() -> None:
-            server = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=self.timeout_seconds)
-            try:
-                if settings.smtp_use_starttls:
-                    server.starttls()
-                server.login(username, password)
-                server.sendmail(from_addr, recipient, msg.as_string())
-            finally:
-                try:
-                    server.quit()
-                except Exception:
-                    pass
+        # Use the credentials to send the email
+        service = build('gmail', 'v1', credentials=creds)
+        message = MIMEText(body)
+        message['to'] = recipient
+        message['subject'] = subject
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
 
         try:
-            await asyncio.to_thread(_send)
+            message = (service.users().messages().send(userId='me', body={
+                'raw': raw_message
+            }).execute())
             return ToolResult(success=True, output=f"Email sent to {recipient}", error=None)
-        except Exception as e:
-            return ToolResult(success=False, output="", error=f"Failed to send email: {e}")
+        except HttpError as error:
+            return ToolResult(success=False, output="", error=f"Failed to send email: {error}")
