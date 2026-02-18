@@ -97,16 +97,28 @@ class BudgetTracker:
                     session.add(bal)
                 log.info("provider_balances_seeded", count=len(DEFAULT_PROVIDERS))
             else:
-                # Migrate existing providers: ensure currency is set correctly
+                # Migrate: add any new providers from DEFAULT_PROVIDERS that don't exist yet
                 for p in DEFAULT_PROVIDERS:
-                    if p.get("currency") and p["currency"] != "USD":
-                        result = await session.execute(
-                            select(ProviderBalance).where(ProviderBalance.provider == p["provider"])
+                    result = await session.execute(
+                        select(ProviderBalance).where(ProviderBalance.provider == p["provider"])
+                    )
+                    existing = result.scalar_one_or_none()
+                    if not existing:
+                        bal = ProviderBalance(
+                            provider=p["provider"],
+                            known_balance=p["known_balance"],
+                            tier=p["tier"],
+                            currency=p.get("currency", "USD"),
+                            notes=p["notes"],
+                            spent_tracked=0.0,
+                            balance_updated_at=datetime.now(timezone.utc) if p["known_balance"] is not None else None,
                         )
-                        existing = result.scalar_one_or_none()
-                        if existing and (not existing.currency or existing.currency == "USD"):
+                        session.add(bal)
+                        log.info("provider_added_migration", provider=p["provider"])
+                    elif existing:
+                        # Update currency if needed
+                        if p.get("currency") and p["currency"] != "USD" and (not existing.currency or existing.currency == "USD"):
                             existing.currency = p["currency"]
-                            # Also update balance/notes if they were defaults
                             if existing.known_balance is None and p["known_balance"] is not None:
                                 existing.known_balance = p["known_balance"]
                                 existing.balance_updated_at = datetime.now(timezone.utc)
@@ -182,7 +194,7 @@ class BudgetTracker:
                 return {
                     "monthly_cap": settings.monthly_budget_usd,
                     "spent": 0, "remaining": settings.monthly_budget_usd,
-                    "percent_used": 0, "providers": [],
+                    "percent_used": 0, "source": "config", "providers": [],
                 }
 
             current_month = datetime.now(timezone.utc).strftime("%Y-%m")
@@ -217,22 +229,22 @@ class BudgetTracker:
                     "balance_updated_at": pb.balance_updated_at.isoformat() if pb.balance_updated_at else None,
                 })
 
-            # Overall remaining: use cap-based unless only non-USD providers are available
-            # If all providers are USD/EUR/GBP, use the cap and subtract spending
-            has_usd_provider = any(pb.currency in ("USD", "EUR", "GBP") for pb in provider_balances)
-            if has_usd_provider:
-                remaining = max(0, config.monthly_cap_usd - spent)
-                cap = config.monthly_cap_usd
-            else:
-                # Only non-USD providers (credits, requests): use total_available
+            # Overall remaining: prefer sum of provider balances over config cap
+            if total_available > 0:
                 remaining = total_available
                 cap = total_available + spent
+                source = "providers"
+            else:
+                remaining = max(0, config.monthly_cap_usd - spent)
+                cap = config.monthly_cap_usd
+                source = "config"
 
             return {
                 "monthly_cap": round(cap, 2),
                 "spent": round(spent, 4),
                 "remaining": round(remaining, 4),
                 "percent_used": round((spent / cap) * 100, 1) if cap > 0 else 0,
+                "source": source,
                 "providers": providers,
             }
 

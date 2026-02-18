@@ -12,6 +12,7 @@ from jarvis.tools.llm_config import LLMConfigTool
 from jarvis.tools.self_modify import SelfModifyTool
 from jarvis.tools.coding_agent import CodingAgentTool
 from jarvis.tools.resource_manager import ResourceManagerTool
+from jarvis.tools.news_monitor import NewsMonitorTool
 from jarvis.memory.vector import VectorMemory
 from jarvis.safety.validator import SafetyValidator
 from jarvis.observability.logger import get_logger
@@ -42,6 +43,7 @@ class ToolRegistry:
             MemoryWriteTool(vector_memory),
             MemorySearchTool(vector_memory),
             SelfModifyTool(blob_storage=blob_storage),
+            NewsMonitorTool(),
         ]
         if budget_tracker:
             default_tools.append(BudgetQueryTool(budget_tracker))

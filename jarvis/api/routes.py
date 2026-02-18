@@ -214,15 +214,6 @@ async def clear_short_term_memories():
     return {"ok": True, "action": "cleared"}
 
 
-@router.get("/news")
-async def get_news():
-    """Fetch news data from the news monitoring service."""
-    from jarvis.tools.news_monitor import NewsMonitorTool
-    news_tool = NewsMonitorTool()
-    result = await news_tool.execute(query="latest news", max_results=5)
-    return {"news": result.output}
-
-
 @router.post("/control/pause")
 async def pause():
     state = get_app_state()
@@ -278,7 +269,7 @@ async def get_providers():
 
 @router.put("/providers/{provider}")
 async def update_provider(provider: str, body: ProviderBalanceUpdate):
-    """Update a provider's known balance, tier, currency, or notes."""
+    """Update a provider's known balance, tier, currency, notes, or API key."""
     state = get_app_state()
     result = await state["budget"].update_provider_balance(
         provider=provider,
@@ -288,7 +279,41 @@ async def update_provider(provider: str, body: ProviderBalanceUpdate):
         notes=body.notes,
         reset_spending=body.reset_spending,
     )
+
+    # Handle API key update separately — write to .env and live config
+    if body.api_key:
+        import os
+        from jarvis.config import settings
+        key_attr = f"{provider}_api_key"
+        if hasattr(settings, key_attr):
+            setattr(settings, key_attr, body.api_key)
+            os.environ[f"{provider.upper()}_API_KEY"] = body.api_key
+            # Persist to .env file
+            env_path = "/data/code/.env" if os.path.exists("/data/code/.env") else "/app/.env"
+            env_var = f"{provider.upper()}_API_KEY"
+            _update_env_file(env_path, env_var, body.api_key)
+            result["api_key_updated"] = True
+
     return {"ok": True, **result}
+
+
+def _update_env_file(path: str, key: str, value: str):
+    """Update or add an env var in a .env file."""
+    import os
+    lines = []
+    found = False
+    if os.path.exists(path):
+        with open(path, 'r') as f:
+            for line in f:
+                if line.strip().startswith(f"{key}="):
+                    lines.append(f"{key}={value}\n")
+                    found = True
+                else:
+                    lines.append(line)
+    if not found:
+        lines.append(f"{key}={value}\n")
+    with open(path, 'w') as f:
+        f.writelines(lines)
 
 
 @router.post("/providers")
@@ -611,3 +636,12 @@ async def get_analytics(range: str = "24h"):
 @router.get("/health")
 async def health():
     return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+
+
+@router.get("/news")
+async def get_news():
+    """Fetch news data from the news monitoring service."""
+    from jarvis.tools.news_monitor import NewsMonitorTool
+    news_tool = NewsMonitorTool()
+    result = await news_tool.execute(query="latest news", max_results=5)
+    return {"news": result.output}

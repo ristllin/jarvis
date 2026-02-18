@@ -66,6 +66,7 @@ class ProviderBalanceUpdate(BaseModel):
     currency: Optional[str] = None   # USD, EUR, credits, requests, etc.
     notes: Optional[str] = None
     reset_spending: bool = False      # Reset tracked spending when updating balance
+    api_key: Optional[str] = None    # Update the API key for this provider
 
 class AddProviderRequest(BaseModel):
     provider: str
