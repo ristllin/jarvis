@@ -1,5 +1,6 @@
 # Environment / Secrets
 .env
+ngrok-policy.yml
 
 # Data directory (persistent volume)
 data/

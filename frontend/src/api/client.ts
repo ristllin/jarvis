@@ -3,8 +3,15 @@ const BASE = '/api'
 async function fetchJSON<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     ...options,
   })
+  if (res.status === 401) {
+    const data = await res.json().catch(() => ({}))
+    const loginUrl = (data as { login_url?: string }).login_url || '/api/auth/login'
+    window.location.href = loginUrl
+    throw new Error('Not authenticated')
+  }
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()
 }
@@ -35,6 +42,12 @@ export const api = {
       body: JSON.stringify({ new_cap_usd }),
     }),
   health: () => fetchJSON<any>('/health'),
+
+  // Auth
+  getMe: () => fetchJSON<any>('/auth/me'),
+  logout: () => {
+    window.location.href = '/api/auth/logout'
+  },
 
   // Providers
   getProviders: () => fetchJSON<any>('/providers'),

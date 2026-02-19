@@ -21,7 +21,39 @@ docker compose up -d
 
 # 4. Open the dashboard
 open http://localhost:3000
+# Or via nginx (port 80): open http://localhost
 ```
+
+## Remote Access (ngrok)
+
+To expose the dashboard over the internet with ngrok:
+
+1. **Start JARVIS** with `docker compose up -d`. The nginx reverse proxy serves both frontend and API on port 80.
+
+2. **Run ngrok** (install from [ngrok.com](https://ngrok.com)):
+   ```bash
+   ./ngrok.sh
+   # Or: source .env && ngrok start --config ngrok.yml web
+   ```
+   Your dashboard will be at `https://collins-saxicolous-moveably.ngrok-free.dev` (or your configured domain).
+
+3. **Enable auth** in `.env`:
+   ```
+   AUTH_ENABLED=true
+   AUTH_BASE_URL=https://collins-saxicolous-moveably.ngrok-free.dev
+   AUTH_SECRET_KEY=<random-secret>
+   GOOGLE_CLIENT_ID=<from Google Cloud Console>
+   GOOGLE_CLIENT_SECRET=<from Google Cloud Console>
+   ALLOWED_EMAILS=ristlin@gmail.com,jarvis.bot.g.d@gmail.com
+   ```
+
+4. **Create Google OAuth credentials**:
+   - Go to [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials
+   - Create OAuth 2.0 Client ID (Web application)
+   - Add authorized redirect URI: `https://collins-saxicolous-moveably.ngrok-free.dev/api/auth/callback`
+   - Copy Client ID and Client Secret to `.env`
+
+Only emails in `ALLOWED_EMAILS` can access the dashboard when auth is enabled.
 
 ## Architecture
 

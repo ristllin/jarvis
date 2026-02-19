@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useWebSocket } from './hooks/useWebSocket'
 import { api } from './api/client'
+import { LogOut } from 'lucide-react'
 import { Dashboard } from './components/Dashboard'
 import { BudgetPanel } from './components/BudgetPanel'
 import { MemoryPanel } from './components/MemoryPanel'
@@ -33,7 +34,12 @@ export default function App() {
   const [status, setStatus] = useState<JarvisStatus | null>(null)
   const [budget, setBudget] = useState<BudgetStatus | null>(null)
   const [memoryStats, setMemoryStats] = useState<MemoryStats | null>(null)
+  const [user, setUser] = useState<{ email: string; name?: string; auth_enabled?: boolean } | null>(null)
   const { lastMessage, connected } = useWebSocket()
+
+  useEffect(() => {
+    api.getMe().then(setUser).catch(() => setUser(null))
+  }, [])
 
   const refresh = async () => {
     try {
@@ -84,7 +90,16 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="p-4 border-t border-gray-800">
+        <div className="p-4 border-t border-gray-800 space-y-2">
+          {user?.auth_enabled && (
+            <button
+              onClick={() => api.logout()}
+              className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-400 hover:text-gray-200 hover:bg-gray-800 rounded transition-colors"
+            >
+              <LogOut size={16} />
+              Log out ({user.email})
+            </button>
+          )}
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
             <span className="text-xs text-gray-500">{connected ? 'Connected' : 'Disconnected'}</span>
