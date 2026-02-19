@@ -188,6 +188,15 @@ async def get_short_term_memories():
 @router.post("/memory/short-term")
 
 @router.get("/debug")
+@router.get("/tool-status")
+async def get_tool_status():
+    state = get_app_state()
+    return {"tool_status": state["tools"].get_status()}
+
+@router.get("/send_email")
+async def send_email():
+    # Placeholder for email sending functionality
+    return {"message": "Email sent successfully"}
 async def debug_info():
     import os
     os.utime('/app/jarvis/reload', None)  # Touch a reload file to trigger a restart.
