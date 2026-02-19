@@ -3,20 +3,21 @@ import { api } from '../api/client'
 import type { MemoryStats, VectorMemoryEntry, BlobEntry, WorkingMemorySnapshot, MemoryConfig } from '../types'
 import {
   Database, HardDrive, Brain, Search, Trash2, Star, Clock, ChevronDown, ChevronRight,
-  Settings, RefreshCw, Filter, Eye, Zap, Shield,
+  Settings, RefreshCw, Filter, Eye, Zap, Shield, StickyNote, Plus, X,
 } from 'lucide-react'
 
 interface Props {
   stats: MemoryStats | null
 }
 
-type SubTab = 'overview' | 'vector' | 'blob' | 'working' | 'config'
+type SubTab = 'overview' | 'short-term' | 'vector' | 'blob' | 'working' | 'config'
 
 export function MemoryPanel({ stats }: Props) {
   const [subTab, setSubTab] = useState<SubTab>('overview')
 
   const subTabs: { id: SubTab; label: string; icon: React.ReactNode }[] = [
     { id: 'overview', label: 'Overview', icon: <Brain size={16} /> },
+    { id: 'short-term', label: 'Scratch Pad', icon: <StickyNote size={16} /> },
     { id: 'working', label: 'Working Context', icon: <Zap size={16} /> },
     { id: 'vector', label: 'Vector Memory', icon: <Database size={16} /> },
     { id: 'blob', label: 'Blob Storage', icon: <HardDrive size={16} /> },
@@ -28,12 +29,12 @@ export function MemoryPanel({ stats }: Props) {
       <h2 className="text-xl font-bold">Memory System</h2>
 
       {/* Sub-tabs */}
-      <div className="flex gap-1 bg-gray-900 rounded-lg p-1 border border-gray-800">
+      <div className="flex gap-1 bg-gray-900 rounded-lg p-1 border border-gray-800 overflow-x-auto">
         {subTabs.map((t) => (
           <button
             key={t.id}
             onClick={() => setSubTab(t.id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm transition-colors ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm transition-colors whitespace-nowrap ${
               subTab === t.id
                 ? 'bg-gray-800 text-jarvis-400'
                 : 'text-gray-400 hover:text-gray-200'
@@ -46,6 +47,7 @@ export function MemoryPanel({ stats }: Props) {
       </div>
 
       {subTab === 'overview' && <OverviewTab stats={stats} />}
+      {subTab === 'short-term' && <ShortTermMemoryTab />}
       {subTab === 'working' && <WorkingContextTab />}
       {subTab === 'vector' && <VectorBrowserTab />}
       {subTab === 'blob' && <BlobBrowserTab />}
@@ -59,15 +61,30 @@ export function MemoryPanel({ stats }: Props) {
 
 function OverviewTab({ stats }: { stats: MemoryStats | null }) {
   const [working, setWorking] = useState<WorkingMemorySnapshot | null>(null)
+  const [stmCount, setStmCount] = useState<number>(0)
 
   useEffect(() => {
     api.getWorkingMemory().then(setWorking).catch(() => {})
+    api.getShortTermMemories().then((d) => setStmCount(d.count || 0)).catch(() => {})
   }, [])
 
   if (!stats) return <p className="text-gray-500">Loading memory stats...</p>
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {/* Short-term card */}
+      <div className="bg-gray-900 border border-gray-800 rounded-lg p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <StickyNote size={20} className="text-orange-400" />
+          <h3 className="font-medium">Scratch Pad</h3>
+        </div>
+        <div className="text-3xl font-bold text-orange-400">{stmCount}</div>
+        <p className="text-xs text-gray-500 mt-1">short-term notes (max 50)</p>
+        <p className="text-xs text-gray-600 mt-2">
+          Rolling operational notes. Auto-expire after 48h, oldest evicted at cap.
+        </p>
+      </div>
+
       {/* Vector card */}
       <div className="bg-gray-900 border border-gray-800 rounded-lg p-5">
         <div className="flex items-center gap-2 mb-3">
@@ -118,6 +135,184 @@ function OverviewTab({ stats }: { stats: MemoryStats | null }) {
           <p className="text-xs text-gray-500">Not yet available</p>
         )}
       </div>
+    </div>
+  )
+}
+
+
+/* ─── Short-Term Memory Tab (Scratch Pad) ──────────────────────────── */
+
+function ShortTermMemoryTab() {
+  const [memories, setMemories] = useState<any[]>([])
+  const [count, setCount] = useState(0)
+  const [maxEntries, setMaxEntries] = useState(50)
+  const [loading, setLoading] = useState(true)
+  const [newNote, setNewNote] = useState('')
+  const [adding, setAdding] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await api.getShortTermMemories()
+      setMemories(data.memories || [])
+      setCount(data.count || 0)
+      setMaxEntries(data.max_entries || 50)
+    } catch (e) {
+      console.error(e)
+    }
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const handleAdd = async () => {
+    if (!newNote.trim()) return
+    setAdding(true)
+    try {
+      await api.updateShortTermMemories({ add: [newNote.trim()] })
+      setNewNote('')
+      await load()
+    } catch (e) {
+      console.error(e)
+    }
+    setAdding(false)
+  }
+
+  const handleRemove = async (idx: number) => {
+    try {
+      await api.updateShortTermMemories({ remove: [idx] })
+      await load()
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const handleClear = async () => {
+    if (!confirm('Clear all short-term memories?')) return
+    try {
+      await api.clearShortTermMemories()
+      await load()
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const formatAge = (isoStr: string) => {
+    try {
+      const created = new Date(isoStr)
+      const now = new Date()
+      const diffMs = now.getTime() - created.getTime()
+      const mins = Math.floor(diffMs / 60000)
+      if (mins < 60) return `${mins}m ago`
+      const hours = Math.floor(mins / 60)
+      if (hours < 24) return `${hours}h ago`
+      return `${Math.floor(hours / 24)}d ago`
+    } catch {
+      return '?'
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <StickyNote size={20} className="text-orange-400" />
+            Short-Term Memories
+            <span className="text-sm font-normal text-gray-500">({count}/{maxEntries})</span>
+          </h3>
+          <p className="text-xs text-gray-500 mt-1">
+            Rolling scratch pad — operational notes that persist across iterations. Auto-expires after 48h.
+            JARVIS and tool results auto-add entries here.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={load} className="flex items-center gap-1 px-3 py-1.5 rounded bg-gray-800 text-gray-300 text-sm hover:bg-gray-700">
+            <RefreshCw size={14} />
+            Refresh
+          </button>
+          {count > 0 && (
+            <button onClick={handleClear} className="flex items-center gap-1 px-3 py-1.5 rounded bg-red-900/30 text-red-400 text-sm hover:bg-red-900/50">
+              <Trash2 size={14} />
+              Clear All
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Capacity bar */}
+      <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
+        <div className="flex justify-between text-xs text-gray-500 mb-1">
+          <span>Capacity</span>
+          <span>{count} / {maxEntries} slots used</span>
+        </div>
+        <div className="w-full bg-gray-800 rounded-full h-2">
+          <div
+            className={`h-2 rounded-full transition-all ${
+              count / maxEntries > 0.8 ? 'bg-red-500' : count / maxEntries > 0.5 ? 'bg-yellow-500' : 'bg-orange-500'
+            }`}
+            style={{ width: `${Math.min(100, (count / maxEntries) * 100)}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Add note */}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={newNote}
+          onChange={(e) => setNewNote(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+          placeholder="Add a note for JARVIS..."
+          className="flex-1 px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-200 focus:outline-none focus:border-orange-400"
+        />
+        <button
+          onClick={handleAdd}
+          disabled={adding || !newNote.trim()}
+          className="flex items-center gap-1 px-4 py-2 bg-orange-600 text-white rounded-lg text-sm hover:bg-orange-500 disabled:opacity-50"
+        >
+          <Plus size={14} />
+          Add
+        </button>
+      </div>
+
+      {/* Memory list */}
+      {loading ? (
+        <div className="text-gray-500 py-4">Loading...</div>
+      ) : memories.length === 0 ? (
+        <div className="text-gray-500 py-8 text-center">
+          No short-term memories yet. They'll appear as JARVIS runs iterations and executes tools.
+        </div>
+      ) : (
+        <div className="bg-gray-900 border border-gray-800 rounded-lg divide-y divide-gray-800 max-h-[600px] overflow-auto">
+          {memories.map((mem, idx) => (
+            <div key={idx} className="px-4 py-3 group hover:bg-gray-800/50">
+              <div className="flex items-start gap-3">
+                <span className="text-xs font-mono text-gray-600 mt-0.5 w-6 text-right">[{idx}]</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-300">{mem.content}</p>
+                  <div className="flex items-center gap-3 mt-1">
+                    <span className="text-xs text-gray-600 flex items-center gap-1">
+                      <Clock size={10} />
+                      {formatAge(mem.created_at)}
+                    </span>
+                    {mem.iteration > 0 && (
+                      <span className="text-xs text-gray-600">iter #{mem.iteration}</span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleRemove(idx)}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-600 hover:text-red-400 p-1"
+                  title="Remove"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

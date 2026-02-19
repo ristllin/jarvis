@@ -38,7 +38,7 @@ export const api = {
 
   // Providers
   getProviders: () => fetchJSON<any>('/providers'),
-  updateProvider: (provider: string, data: { known_balance?: number; tier?: string; currency?: string; notes?: string; reset_spending?: boolean }) =>
+  updateProvider: (provider: string, data: { known_balance?: number; tier?: string; currency?: string; notes?: string; reset_spending?: boolean; api_key?: string }) =>
     fetchJSON<any>(`/providers/${provider}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -68,6 +68,16 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(config),
     }),
+
+  // Short-term memories
+  getShortTermMemories: () => fetchJSON<any>('/memory/short-term'),
+  updateShortTermMemories: (data: { add?: string[]; remove?: number[]; replace?: string[] }) =>
+    fetchJSON<any>('/memory/short-term', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  clearShortTermMemories: () =>
+    fetchJSON<any>('/memory/short-term', { method: 'DELETE' }),
 
   // Analytics
   getAnalytics: (range = '24h') => fetchJSON<any>(`/analytics?range=${range}`),

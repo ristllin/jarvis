@@ -12,6 +12,7 @@ class JarvisState(Base):
     short_term_goals = Column(JSON, default=list)
     mid_term_goals = Column(JSON, default=list)
     long_term_goals = Column(JSON, default=list)
+    short_term_memories = Column(JSON, default=list)  # Rolling buffer of operational notes
     active_task = Column(Text, nullable=True)
     loop_iteration = Column(Integer, default=0)
     is_paused = Column(Boolean, default=False)

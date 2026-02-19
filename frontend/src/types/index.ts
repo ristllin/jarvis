@@ -30,6 +30,7 @@ export interface BudgetStatus {
   spent: number
   remaining: number
   percent_used: number
+  source?: 'providers' | 'config'
   providers?: ProviderStatus[]
 }
 

@@ -79,13 +79,29 @@ export function Dashboard({ status, budget, memory, lastMessage }: Props) {
           {budget ? (
             <div>
               <p className="text-2xl font-bold text-green-400">${budget.remaining.toFixed(2)}</p>
-              <p className="text-xs text-gray-500">remaining of ${budget.monthly_cap.toFixed(2)}</p>
+              <p className="text-xs text-gray-500">
+                {budget.source === 'providers'
+                  ? `from provider balances ($${budget.spent.toFixed(2)} spent)`
+                  : `remaining of $${budget.monthly_cap.toFixed(2)} cap`}
+              </p>
               <div className="mt-2 w-full bg-gray-800 rounded-full h-2">
                 <div
                   className={`h-2 rounded-full ${budget.percent_used > 80 ? 'bg-red-500' : budget.percent_used > 50 ? 'bg-yellow-500' : 'bg-green-500'}`}
                   style={{ width: `${Math.min(100, budget.percent_used)}%` }}
                 />
               </div>
+              {budget.providers?.filter(p => p.currency && !['USD', 'EUR', 'GBP'].includes(p.currency) && p.estimated_remaining != null).length ? (
+                <div className="mt-2 pt-2 border-t border-gray-800 space-y-1">
+                  {budget.providers
+                    .filter(p => p.currency && !['USD', 'EUR', 'GBP'].includes(p.currency) && p.estimated_remaining != null)
+                    .map(p => (
+                      <p key={p.provider} className="text-xs text-gray-400">
+                        <span className="capitalize">{p.provider}:</span>{' '}
+                        <span className="text-gray-300">{Math.round(p.estimated_remaining!)} {p.currency}</span>
+                      </p>
+                    ))}
+                </div>
+              ) : null}
             </div>
           ) : (
             <p className="text-gray-500 text-sm">Loading...</p>

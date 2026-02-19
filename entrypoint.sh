@@ -97,12 +97,21 @@ else
             jarvis/tools/resource_manager.py \
             jarvis/agents/__init__.py \
             jarvis/agents/coding.py \
+            jarvis/tools/coding_agent.py \
             jarvis/safety/prompt_builder.py \
             jarvis/core/loop.py \
             jarvis/core/planner.py \
             jarvis/core/executor.py \
+            jarvis/core/state.py \
+            jarvis/core/email_listener.py \
+            jarvis/tools/send_email.py \
+            jarvis/tools/skills.py \
+            jarvis/tools/http_request.py \
+            jarvis/tools/env_manager.py \
             jarvis/api/routes.py \
             jarvis/api/schemas.py \
+            jarvis/llm/router.py \
+            jarvis/llm/providers/grok.py \
             jarvis/budget/tracker.py \
             jarvis/memory/working.py \
             jarvis/memory/vector.py \

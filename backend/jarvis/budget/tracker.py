@@ -20,8 +20,19 @@ PRICING = {
         "gpt-4o-mini": {"input": 0.15, "output": 0.60},
     },
     "mistral": {
-        "mistral-large-latest": {"input": 2.0, "output": 6.0},
-        "mistral-small-latest": {"input": 0.20, "output": 0.60},
+        # Mistral free tier — no dollar cost to us (usage-limited, not pay-per-token)
+        "mistral-large-latest": {"input": 0.0, "output": 0.0},
+        "mistral-small-latest": {"input": 0.0, "output": 0.0},
+        # Devstral coding models — also free on Mistral API
+        "devstral-small-2505": {"input": 0.0, "output": 0.0},
+        "devstral-small-2507": {"input": 0.0, "output": 0.0},
+        "devstral-medium-2507": {"input": 0.0, "output": 0.0},
+    },
+    "grok": {
+        "grok-4-1-fast-reasoning": {"input": 0.20, "output": 0.50},
+        "grok-4-1-fast-non-reasoning": {"input": 0.20, "output": 0.50},
+        "grok-3-mini": {"input": 0.30, "output": 0.50},
+        "grok-code-fast-1": {"input": 0.20, "output": 1.50},
     },
     "ollama": {
         "default": {"input": 0.0, "output": 0.0},
@@ -45,6 +56,7 @@ DEFAULT_PROVIDERS = [
     {"provider": "anthropic",  "known_balance": 11.71, "tier": "paid",    "currency": "USD",     "notes": "Prepaid credits"},
     {"provider": "openai",     "known_balance": 18.85, "tier": "paid",    "currency": "USD",     "notes": "Prepaid credits"},
     {"provider": "mistral",    "known_balance": None,  "tier": "free",    "currency": "USD",     "notes": "Free tier — limits unknown"},
+    {"provider": "grok",       "known_balance": 25.0,  "tier": "paid",    "currency": "USD",     "notes": "xAI — $25/month free credits"},
     {"provider": "tavily",     "known_balance": 1000,  "tier": "free",    "currency": "credits", "notes": "Monthly plan — 1000 credits/month"},
     {"provider": "ollama",     "known_balance": None,  "tier": "free",    "currency": "USD",     "notes": "Local — no cost"},
 ]
@@ -85,16 +97,28 @@ class BudgetTracker:
                     session.add(bal)
                 log.info("provider_balances_seeded", count=len(DEFAULT_PROVIDERS))
             else:
-                # Migrate existing providers: ensure currency is set correctly
+                # Migrate: add any new providers from DEFAULT_PROVIDERS that don't exist yet
                 for p in DEFAULT_PROVIDERS:
-                    if p.get("currency") and p["currency"] != "USD":
-                        result = await session.execute(
-                            select(ProviderBalance).where(ProviderBalance.provider == p["provider"])
+                    result = await session.execute(
+                        select(ProviderBalance).where(ProviderBalance.provider == p["provider"])
+                    )
+                    existing = result.scalar_one_or_none()
+                    if not existing:
+                        bal = ProviderBalance(
+                            provider=p["provider"],
+                            known_balance=p["known_balance"],
+                            tier=p["tier"],
+                            currency=p.get("currency", "USD"),
+                            notes=p["notes"],
+                            spent_tracked=0.0,
+                            balance_updated_at=datetime.now(timezone.utc) if p["known_balance"] is not None else None,
                         )
-                        existing = result.scalar_one_or_none()
-                        if existing and (not existing.currency or existing.currency == "USD"):
+                        session.add(bal)
+                        log.info("provider_added_migration", provider=p["provider"])
+                    elif existing:
+                        # Update currency if needed
+                        if p.get("currency") and p["currency"] != "USD" and (not existing.currency or existing.currency == "USD"):
                             existing.currency = p["currency"]
-                            # Also update balance/notes if they were defaults
                             if existing.known_balance is None and p["known_balance"] is not None:
                                 existing.known_balance = p["known_balance"]
                                 existing.balance_updated_at = datetime.now(timezone.utc)
@@ -170,7 +194,7 @@ class BudgetTracker:
                 return {
                     "monthly_cap": settings.monthly_budget_usd,
                     "spent": 0, "remaining": settings.monthly_budget_usd,
-                    "percent_used": 0, "providers": [],
+                    "percent_used": 0, "source": "config", "providers": [],
                 }
 
             current_month = datetime.now(timezone.utc).strftime("%Y-%m")
@@ -205,19 +229,22 @@ class BudgetTracker:
                     "balance_updated_at": pb.balance_updated_at.isoformat() if pb.balance_updated_at else None,
                 })
 
-            # Overall remaining: use total_available from known balances if > 0, else use cap-based
+            # Overall remaining: prefer sum of provider balances over config cap
             if total_available > 0:
                 remaining = total_available
                 cap = total_available + spent
+                source = "providers"
             else:
                 remaining = max(0, config.monthly_cap_usd - spent)
                 cap = config.monthly_cap_usd
+                source = "config"
 
             return {
                 "monthly_cap": round(cap, 2),
                 "spent": round(spent, 4),
                 "remaining": round(remaining, 4),
                 "percent_used": round((spent / cap) * 100, 1) if cap > 0 else 0,
+                "source": source,
                 "providers": providers,
             }
 
@@ -336,18 +363,51 @@ class BudgetTracker:
         return status["remaining"] >= estimated_cost
 
     async def get_recommended_tier(self) -> str:
-        status = await self.get_status()
-        pct = status["percent_used"]
-        remaining = status["remaining"]
+        """Recommend a tier based on per-provider budgets.
 
-        # If very low on funds across all providers, downgrade
-        if remaining < 1.0:
-            return "local_only"
-        elif remaining < 5.0 or pct >= 80:
-            return "level3"
-        elif remaining < 15.0 or pct >= 60:
+        This is now budget-aware at the provider level:
+        - If ANY paid provider has > $2 remaining → level1 is fine
+        - If paid providers are tight but > $0.50 → level2
+        - If all paid providers are near-zero → level3
+        - Free providers (Mistral, Ollama) are always available at any tier
+
+        Note: The router further refines this by preferring free providers
+        within a tier when budget is tight.
+        """
+        status = await self.get_status()
+        providers = status.get("providers", [])
+
+        # Calculate paid provider availability
+        paid_remaining = 0.0
+        has_free_provider = False
+        for p in providers:
+            currency = p.get("currency", "USD")
+            tier = p.get("tier", "unknown")
+            est = p.get("estimated_remaining")
+
+            if tier == "free":
+                has_free_provider = True
+                continue
+
+            if est is not None and currency in ("USD", "EUR", "GBP"):
+                paid_remaining += est
+
+        # If we have decent paid budget, no restrictions
+        if paid_remaining > 5.0:
+            return "level1"
+        elif paid_remaining > 2.0:
             return "level2"
-        return "level1"
+        elif paid_remaining > 0.50:
+            # Tight budget — prefer level2 but don't force level3
+            # (free providers like Mistral fill the gaps)
+            return "level2"
+        elif has_free_provider:
+            # Almost no paid budget, but free providers exist
+            # Still allow level2 because Mistral Large is free and capable
+            return "level2"
+        else:
+            # Truly broke — no paid budget, no free providers
+            return "local_only"
 
     def _estimate_cost(self, provider: str, model: str, input_tokens: int, output_tokens: int) -> float:
         provider_pricing = PRICING.get(provider, {})
