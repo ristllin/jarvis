@@ -189,6 +189,8 @@ async def get_short_term_memories():
 
 @router.get("/debug")
 async def debug_info():
+    import os
+    os.utime('/app/jarvis/reload', None)  # Touch a reload file to trigger a restart.
     import subprocess
     git_sha = subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip().decode('utf-8')
     routes_file = __file__
