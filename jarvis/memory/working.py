@@ -53,10 +53,20 @@ class WorkingMemory:
 
     def get_working_snapshot(self) -> dict:
         """Get a snapshot of current working memory for the UI."""
+        # Truncate messages for the API response (full content can be huge)
+        truncated_messages = []
+        for msg in self.messages:
+            truncated_messages.append({
+                "role": msg.get("role", ""),
+                "content": msg.get("content", "")[:2000],
+                "full_length": len(msg.get("content", "")),
+            })
+
         return {
             "system_prompt_length": len(self.system_prompt),
             "system_prompt_tokens": len(self.system_prompt) // 4,
             "message_count": len(self.messages),
+            "messages": truncated_messages,
             "injected_memory_count": len(self.injected_memories),
             "injected_memories": self.injected_memories_raw[:50],  # Cap for API response
             "total_tokens_estimate": self._estimate_tokens(),

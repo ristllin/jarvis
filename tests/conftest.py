@@ -23,6 +23,7 @@ async def db_session():
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with engine.begin() as conn:
+        await conn.run_sync(BudgetConfig.ensure_config)
         await conn.run_sync(Base.metadata.create_all)
 
     async with session_factory() as session:

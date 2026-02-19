@@ -17,6 +17,7 @@ from jarvis.tools.skills import SkillsTool
 from jarvis.tools.http_request import HttpRequestTool
 from jarvis.tools.env_manager import EnvManagerTool
 from jarvis.tools.memory_config import MemoryConfigTool
+from jarvis.tools.news_monitor import NewsMonitorTool
 from jarvis.memory.vector import VectorMemory
 from jarvis.memory.working import WorkingMemory
 from jarvis.safety.validator import SafetyValidator
@@ -52,6 +53,7 @@ class ToolRegistry:
             SkillsTool(),
             HttpRequestTool(),
             EnvManagerTool(),
+            NewsMonitorTool(),
         ]
         if working:
             default_tools.append(MemoryConfigTool(working))

@@ -257,6 +257,16 @@ async def override_budget(body: BudgetOverride):
     return {"ok": True, "new_cap": body.new_cap_usd}
 
 
+
+@router.get("/news")
+async def get_news():
+    """Fetch news data from the news monitoring service."""
+    from jarvis.tools.news_monitor import NewsMonitorTool
+    news_tool = NewsMonitorTool()
+    result = await news_tool.execute(query="latest news", max_results=5)
+    return {"news": result.output}
+
+
 # ── Provider balance management ───────────────────────────────────────────
 
 @router.get("/providers")

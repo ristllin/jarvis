@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { api } from '../api/client'
 import type { JarvisStatus, BudgetStatus, MemoryStats, WSMessage } from '../types'
 import { Activity, Target, Zap, Database, DollarSign, Clock, Flag, Compass, Star, Timer, Bell } from 'lucide-react'
+, NewsPanel
 
 interface Props {
   status: JarvisStatus | null
@@ -46,6 +47,7 @@ export function Dashboard({ status, budget, memory, lastMessage }: Props) {
             )}
           </div>
         </Card>
+<NewsPanel limit={5} />
 
         <Card title="Mid-Term Goals" icon={<Compass size={16} />} color="blue">
           <div className="space-y-1">

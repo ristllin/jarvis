@@ -1,40 +1,44 @@
+"""
+Grok/xAI LLM Provider — uses the OpenAI-compatible API at api.x.ai.
+Models: grok-4-1-fast-reasoning, grok-3-mini, grok-code-fast-1, etc.
+$25/month free credits + very cheap token pricing.
+"""
+from openai import AsyncOpenAI
 from jarvis.llm.base import LLMProvider, LLMResponse
 from jarvis.config import settings
 from jarvis.observability.logger import get_logger
 
-log = get_logger("llm.mistral")
+log = get_logger("llm.grok")
 
-# Devstral models — specialized for agentic coding tasks
-# Free on Mistral API, 256k context, 72.2% SWE-Bench Verified
-DEVSTRAL_MODELS = [
-    "devstral-small-2505",
-    "devstral-small-2507",
-    "devstral-medium-2507",
-]
+GROK_BASE_URL = "https://api.x.ai/v1"
 
-GENERAL_MODELS = [
-    "mistral-large-latest",
-    "mistral-small-latest",
+GROK_MODELS = [
+    "grok-4-1-fast-reasoning",
+    "grok-4-1-fast-non-reasoning",
+    "grok-3-mini",
+    "grok-code-fast-1",
 ]
 
 
-class MistralProvider(LLMProvider):
-    name = "mistral"
+class GrokProvider(LLMProvider):
+    name = "grok"
 
     def __init__(self):
         self._client = None
 
-    def _get_client(self):
-        if self._client is None and settings.mistral_api_key:
-            from mistralai import Mistral
-            self._client = Mistral(api_key=settings.mistral_api_key)
+    def _get_client(self) -> AsyncOpenAI | None:
+        if self._client is None and settings.grok_api_key:
+            self._client = AsyncOpenAI(
+                api_key=settings.grok_api_key,
+                base_url=GROK_BASE_URL,
+            )
         return self._client
 
     def is_available(self) -> bool:
-        return bool(settings.mistral_api_key)
+        return bool(settings.grok_api_key)
 
     def get_models(self) -> list[str]:
-        return GENERAL_MODELS + DEVSTRAL_MODELS
+        return list(GROK_MODELS)
 
     async def complete(
         self,
@@ -46,12 +50,12 @@ class MistralProvider(LLMProvider):
     ) -> LLMResponse:
         client = self._get_client()
         if not client:
-            raise RuntimeError("Mistral API key not configured")
+            raise RuntimeError("Grok API key not configured")
 
-        model = model or "mistral-large-latest"
+        model = model or "grok-4-1-fast-reasoning"
 
         try:
-            response = await client.chat.complete_async(
+            response = await client.chat.completions.create(
                 model=model,
                 messages=messages,
                 temperature=temperature,
@@ -70,5 +74,5 @@ class MistralProvider(LLMProvider):
                 finish_reason=choice.finish_reason,
             )
         except Exception as e:
-            log.error("mistral_error", error=str(e), model=model)
+            log.error("grok_error", error=str(e), model=model)
             raise

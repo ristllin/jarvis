@@ -89,4 +89,5 @@ export const api = {
       body: JSON.stringify({ message }),
     }),
   getChatHistory: (limit = 50) => fetchJSON<any>(`/chat/history?limit=${limit}`),
+  getNews: (query = "latest news", limit = 5) => fetchJSON<any>(`/news?query=${encodeURIComponent(query)}&limit=${limit}`),
 }
