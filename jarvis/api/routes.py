@@ -186,6 +186,21 @@ async def get_short_term_memories():
 
 
 @router.post("/memory/short-term")
+
+@router.get("/debug")
+async def debug_info():
+    import subprocess
+    git_sha = subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip().decode('utf-8')
+    routes_file = __file__
+    main_file = os.path.join(os.path.dirname(__file__), '../main.py')
+    registered_paths = [route.path for route in router.routes]
+    return {
+        'git_sha': git_sha,
+        'routes_file': routes_file,
+        'main_file': main_file,
+        'registered_paths': registered_paths
+    }
+
 async def update_short_term_memories(body: ShortTermMemoryUpdate):
     """Manage short-term memories: add, remove, or replace."""
     state = get_app_state()
