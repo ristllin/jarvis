@@ -381,6 +381,17 @@ class SelfModifyTool(Tool):
     # ── Redeploy (commit + sync + graceful restart) ────────────────────────
 
     async def _redeploy(self, message: str) -> ToolResult:
+        await self._check_and_abort_rebase()
+
+    async def _check_and_abort_rebase(self):
+        # Check if a rebase is in progress
+        rebase_check = await self._run_git(['rebase', '--show-current-patch'], cwd='/app', ignore_error=True)
+        if rebase_check:
+            # Abort the rebase
+            await self._run_git(['rebase', '--abort'], cwd='/app')
+            log.info('Rebase was in progress and has been aborted.')
+        # Check for ongoing rebase and abort if necessary
+        await self._check_and_abort_rebase()
         """Commit current changes, sync to live, and trigger a graceful process restart."""
         try:
             # 1. Commit
@@ -436,6 +447,8 @@ class SelfModifyTool(Tool):
     # ── Helper ─────────────────────────────────────────────────────────────
 
     async def _run_git(self, args: list[str], cwd: str) -> str:
+        if ignore_error:
+            return ''
         proc = await asyncio.create_subprocess_exec(
             "git", *args,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
