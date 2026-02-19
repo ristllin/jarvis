@@ -318,6 +318,87 @@ function ShortTermMemoryTab() {
 }
 
 
+/* ─── Prompt Sections Viewer ─────────────────────────────────────────── */
+
+function PromptSectionsViewer({ sections, maxTokens }: { sections: { name: string; description: string; content: string; tokens: number }[]; maxTokens: number }) {
+  const [expandedSection, setExpandedSection] = useState<number | null>(0)
+  const [search, setSearch] = useState('')
+
+  const filteredContent = expandedSection != null && sections[expandedSection]
+    ? sections[expandedSection].content
+    : ''
+  const searchHighlight = search.trim().toLowerCase()
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+      <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
+        <h4 className="font-medium text-sm flex items-center gap-2">
+          <Eye size={16} className="text-jarvis-400" />
+          Prompt Construction
+        </h4>
+        <span className="text-xs text-gray-500">How the context is built for each LLM call</span>
+      </div>
+      <div className="flex">
+        {/* Section tabs */}
+        <div className="w-48 border-r border-gray-800 flex flex-col">
+          {sections.map((s, idx) => (
+            <button
+              key={idx}
+              onClick={() => setExpandedSection(idx)}
+              className={`px-4 py-3 text-left text-sm transition-colors border-b border-gray-800/50 last:border-0 ${
+                expandedSection === idx ? 'bg-gray-800 text-jarvis-400' : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
+              }`}
+            >
+              <div className="font-medium">{s.name}</div>
+              <div className="text-xs text-gray-500 mt-0.5">{(s.tokens / 1000).toFixed(1)}k tokens</div>
+            </button>
+          ))}
+        </div>
+        {/* Content area */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="px-4 py-2 border-b border-gray-800 flex items-center gap-2">
+            <input
+              type="text"
+              placeholder="Search in prompt..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-jarvis-500"
+            />
+            {expandedSection != null && (
+              <span className="text-xs text-gray-500">
+                {sections[expandedSection].description}
+              </span>
+            )}
+          </div>
+          <div className="p-4 max-h-[400px] overflow-auto">
+            <pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono leading-relaxed">
+              {!filteredContent ? (
+                <span className="text-gray-500">Select a section to view</span>
+              ) : searchHighlight ? (() => {
+                try {
+                  const escaped = searchHighlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+                  const parts = filteredContent.split(new RegExp(`(${escaped})`, 'gi'))
+                  return parts.map((part, i) =>
+                    part.toLowerCase() === searchHighlight ? (
+                      <mark key={i} className="bg-yellow-600/50 text-yellow-100">{part}</mark>
+                    ) : (
+                      <span key={i}>{part}</span>
+                    )
+                  )
+                } catch {
+                  return filteredContent
+                }
+              })() : (
+                filteredContent
+              )}
+            </pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ─── Working Context Tab ───────────────────────────────────────────── */
 
 function WorkingContextTab() {
@@ -387,16 +468,60 @@ function WorkingContextTab() {
             <span>Context Window Usage</span>
             <span>{tokenPct.toFixed(1)}%</span>
           </div>
-          <div className="w-full bg-gray-800 rounded-full h-2">
-            <div
-              className={`h-2 rounded-full transition-all ${
-                tokenPct > 80 ? 'bg-red-500' : tokenPct > 50 ? 'bg-yellow-500' : 'bg-green-500'
-              }`}
-              style={{ width: `${Math.min(100, tokenPct)}%` }}
-            />
+          <div className="w-full bg-gray-800 rounded-lg h-3 flex overflow-hidden">
+            {snapshot.token_breakdown ? (
+              <>
+                {snapshot.token_breakdown.system_prompt > 0 && (
+                  <div
+                    className="bg-amber-500/90 hover:bg-amber-400 transition-colors min-w-[2px]"
+                    style={{ width: `${(snapshot.token_breakdown.system_prompt / snapshot.max_context_tokens) * 100}%` }}
+                    title={`System prompt: ${(snapshot.token_breakdown.system_prompt / 1000).toFixed(1)}k tokens`}
+                  />
+                )}
+                {snapshot.token_breakdown.injected_memories > 0 && (
+                  <div
+                    className="bg-purple-500/90 hover:bg-purple-400 transition-colors min-w-[2px]"
+                    style={{ width: `${(snapshot.token_breakdown.injected_memories / snapshot.max_context_tokens) * 100}%` }}
+                    title={`Injected memories: ${(snapshot.token_breakdown.injected_memories / 1000).toFixed(1)}k tokens`}
+                  />
+                )}
+                {snapshot.token_breakdown.messages > 0 && (
+                  <div
+                    className="bg-blue-500/90 hover:bg-blue-400 transition-colors min-w-[2px]"
+                    style={{ width: `${(snapshot.token_breakdown.messages / snapshot.max_context_tokens) * 100}%` }}
+                    title={`Conversation: ${(snapshot.token_breakdown.messages / 1000).toFixed(1)}k tokens`}
+                  />
+                )}
+              </>
+            ) : (
+              <div
+                className={`h-full rounded-lg transition-all ${
+                  tokenPct > 80 ? 'bg-red-500' : tokenPct > 50 ? 'bg-yellow-500' : 'bg-green-500'
+                }`}
+                style={{ width: `${Math.min(100, tokenPct)}%` }}
+              />
+            )}
           </div>
+          {snapshot.token_breakdown && (
+            <div className="flex gap-4 mt-2 text-xs">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded bg-amber-500" /> System prompt ({(snapshot.token_breakdown.system_prompt / 1000).toFixed(1)}k)
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded bg-purple-500" /> Memories ({(snapshot.token_breakdown.injected_memories / 1000).toFixed(1)}k)
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded bg-blue-500" /> Conversation ({(snapshot.token_breakdown.messages / 1000).toFixed(1)}k)
+              </span>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Prompt construction — browse how the prompt is built */}
+      {snapshot.prompt_sections && snapshot.prompt_sections.length > 0 && (
+        <PromptSectionsViewer sections={snapshot.prompt_sections} maxTokens={snapshot.max_context_tokens} />
+      )}
 
       {/* Injected memories list */}
       <div className="bg-gray-900 border border-gray-800 rounded-lg">

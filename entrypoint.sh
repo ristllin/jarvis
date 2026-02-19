@@ -88,6 +88,9 @@ else
         rsync -a --ignore-existing /frontend/ "$CODE_BACKUP/frontend/" --exclude='node_modules' --exclude='.git' 2>/dev/null || \
             cp -an /frontend/. "$CODE_BACKUP/frontend/" 2>/dev/null || true
 
+        # Force-update frontend config (allowedHosts for ngrok)
+        cp -f /frontend/vite.config.ts "$CODE_BACKUP/frontend/vite.config.ts" 2>/dev/null || true
+
         # Force-update critical infrastructure files that the image updated
         # (these are "ours" — from the developer, not JARVIS's modifications)
         for f in \
@@ -152,9 +155,18 @@ else
     rsync -a --delete "$CODE_BACKUP/backend/" /app/ --exclude='.git' --exclude='__pycache__' 2>/dev/null || \
         cp -a "$CODE_BACKUP/backend/." /app/
 
+    # Preserve image's vite.config.ts (for allowedHosts/ngrok) before restore overwrites it
+    cp -f /frontend/vite.config.ts /tmp/vite.config.ts.bak 2>/dev/null || true
+
     echo "[entrypoint] Syncing /data/code/frontend/ -> /frontend/"
     rsync -a --delete "$CODE_BACKUP/frontend/" /frontend/ --exclude='node_modules' --exclude='.git' 2>/dev/null || \
         cp -a "$CODE_BACKUP/frontend/." /frontend/
+
+    # Restore image's vite.config.ts so ngrok/allowedHosts works
+    if [ -f /tmp/vite.config.ts.bak ]; then
+      cp -f /tmp/vite.config.ts.bak /frontend/vite.config.ts
+      cp -f /tmp/vite.config.ts.bak "$CODE_BACKUP/frontend/vite.config.ts"
+    fi
 fi
 
 # Also init git in /app if not already (for self_modify tool)

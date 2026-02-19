@@ -65,6 +65,19 @@ export interface MemoryConfig {
   relevance_threshold: number
 }
 
+export interface TokenBreakdown {
+  system_prompt: number
+  injected_memories: number
+  messages: number
+}
+
+export interface PromptSection {
+  name: string
+  description: string
+  content: string
+  tokens: number
+}
+
 export interface WorkingMemorySnapshot {
   system_prompt_length: number
   system_prompt_tokens: number
@@ -74,6 +87,8 @@ export interface WorkingMemorySnapshot {
   total_tokens_estimate: number
   max_context_tokens: number
   config: MemoryConfig
+  token_breakdown?: TokenBreakdown
+  prompt_sections?: PromptSection[]
 }
 
 export interface LogEntry {

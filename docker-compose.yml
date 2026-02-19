@@ -41,7 +41,7 @@ services:
       NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
     volumes:
       - ./ngrok-policy.yml:/etc/ngrok/policy.yml:ro
-    command: ["http", "nginx:80", "--domain=collins-saxicolous-moveably.ngrok-free.dev", "--traffic-policy-file=/etc/ngrok/policy.yml"]
+    command: ["http", "nginx:80", "--url=https://collins-saxicolous-moveably.ngrok-free.dev", "--traffic-policy-file=/etc/ngrok/policy.yml"]
     depends_on:
       - nginx
     restart: unless-stopped

@@ -229,13 +229,15 @@ class BudgetTracker:
                     "balance_updated_at": pb.balance_updated_at.isoformat() if pb.balance_updated_at else None,
                 })
 
-            # Overall remaining: prefer sum of provider balances over config cap
-            if total_available > 0:
+            # Overall remaining: use config cap when it gives more than provider sum
+            # (so override always takes effect when user increases cap)
+            from_config = max(0, config.monthly_cap_usd - spent)
+            if total_available > 0 and total_available >= from_config:
                 remaining = total_available
                 cap = total_available + spent
                 source = "providers"
             else:
-                remaining = max(0, config.monthly_cap_usd - spent)
+                remaining = from_config
                 cap = config.monthly_cap_usd
                 source = "config"
 
