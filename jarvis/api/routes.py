@@ -60,15 +60,6 @@ async def get_memory_stats():
 
 
 @router.get("/memory/vector")
-@router.get("/debug")
-async def debug_info():
-    """Debug endpoint to check service status."""
-    return {"status": "ok"}
-
-@router.get("/tool-status")
-async def get_tool_status():
-    """Endpoint to get the status of tools."""
-    return {"tools": "active"}
 async def browse_vector_memory(query: str = None, limit: int = 50, offset: int = 0):
     """Browse or search vector memories."""
     state = get_app_state()
@@ -195,51 +186,6 @@ async def get_short_term_memories():
 
 
 @router.post("/memory/short-term")
-@router.get("/tool-status")
-async def get_tool_status():
-    state = get_app_state()
-    return {"tool_status": state["tools"].get_status()}
-
-@router.get("/send_email")
-async def send_email():
-    # Placeholder for email sending functionality
-    return {"message": "Email sent successfully"}
-
-@router.get("/debug")
-async def debug_info():
-    import os
-    os.utime('/app/jarvis/reload', None)  # Touch a reload file to trigger a restart.
-    import subprocess
-    git_sha = subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip().decode('utf-8')
-    routes_file = __file__
-    main_file = os.path.join(os.path.dirname(__file__), '../main.py')
-    registered_paths = [route.path for route in router.routes]
-
-@router.get("/debug")
-@router.get("/tool-status")
-async def get_tool_status():
-    state = get_app_state()
-    return {"tool_status": state["tools"].get_status()}
-
-@router.get("/send_email")
-async def send_email():
-    # Placeholder for email sending functionality
-    return {"message": "Email sent successfully"}
-async def debug_info():
-    import os
-    os.utime('/app/jarvis/reload', None)  # Touch a reload file to trigger a restart.
-    import subprocess
-    git_sha = subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip().decode('utf-8')
-    routes_file = __file__
-    main_file = os.path.join(os.path.dirname(__file__), '../main.py')
-    registered_paths = [route.path for route in router.routes]
-    return {
-        'git_sha': git_sha,
-        'routes_file': routes_file,
-        'main_file': main_file,
-        'registered_paths': registered_paths
-    }
-
 async def update_short_term_memories(body: ShortTermMemoryUpdate):
     """Manage short-term memories: add, remove, or replace."""
     state = get_app_state()
@@ -309,6 +255,16 @@ async def override_budget(body: BudgetOverride):
             config.monthly_cap_usd = body.new_cap_usd
             await session.commit()
     return {"ok": True, "new_cap": body.new_cap_usd}
+
+
+
+@router.get("/news")
+async def get_news():
+    """Fetch news data from the news monitoring service."""
+    from jarvis.tools.news_monitor import NewsMonitorTool
+    news_tool = NewsMonitorTool()
+    result = await news_tool.execute(query="latest news", max_results=5)
+    return {"news": result.output}
 
 
 # ── Provider balance management ───────────────────────────────────────────
@@ -690,12 +646,3 @@ async def get_analytics(range: str = "24h"):
 @router.get("/health")
 async def health():
     return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
-
-
-@router.get("/news")
-async def get_news():
-    """Fetch news data from the news monitoring service."""
-    from jarvis.tools.news_monitor import NewsMonitorTool
-    news_tool = NewsMonitorTool()
-    result = await news_tool.execute(query="latest news", max_results=5)
-    return {"news": result.output}
