@@ -24,18 +24,22 @@ from jarvis.memory.working import WorkingMemory
 from jarvis.safety.validator import SafetyValidator
 from jarvis.observability.logger import get_logger
 
-log = get_logger("tools")
+# Delayed import to avoid circular dependency
+from jarvis.tools.monitor_tool import MonitorTool
 
+log = get_logger("tools")
 
 class ToolRegistry:
     """Discovers, registers, and executes tools with logging and safety checks."""
 
     def __init__(self, vector_memory: VectorMemory, validator: SafetyValidator,
-                 budget_tracker=None, llm_router=None, blob_storage=None, working: WorkingMemory = None):
+                budget_tracker=None, llm_router=None, blob_storage=None, working: WorkingMemory = None):
         self.tools: dict[str, Tool] = {}
         self.validator = validator
         self.blob = blob_storage
         self._register_defaults(vector_memory, budget_tracker, llm_router, blob_storage, working)
+        self.monitor_tool = MonitorTool(self)
+        self.monitor_tool.start_monitoring()
 
     def _register_defaults(self, vector_memory: VectorMemory,
                            budget_tracker=None, llm_router=None, blob_storage=None, working: WorkingMemory = None):

@@ -5,24 +5,11 @@ from email.mime.text import MIMEText
 
 from jarvis.config import settings
 from jarvis.tools.base import Tool, ToolResult
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
-import base64
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
-import os
-import pickle
 
-# OAuth2 scopes for Gmail API
-SCOPES = ['https://www.googleapis.com/auth/gmail.send']
-
-# Path to the token file
-TOKEN_PATH = os.path.join(os.path.dirname(__file__), 'gmail_token.pickle')
 
 class SendEmailTool(Tool):
     name = "send_email"
-    description = "Sends an email using the configured SMTP settings (defaults to Gmail)."
+    description = "Sends an email using SMTP (defaults to Gmail with App Password)."
     timeout_seconds = 30
 
     def get_schema(self) -> dict:
@@ -37,47 +24,88 @@ class SendEmailTool(Tool):
             "required": ["subject", "body", "to_email"],
         }
 
+    def _get_smtp_config(self) -> dict:
+        """Resolve SMTP configuration from settings with sensible fallbacks."""
+        # Resolve username: smtp_username -> gmail_address
+        username = settings.smtp_username or settings.gmail_address
+
+        # Resolve password: smtp_password -> gmail_app_password
+        password = settings.smtp_password or settings.gmail_app_password
+
+        # Resolve from address: smtp_from_address -> smtp_username -> gmail_address
+        from_address = settings.smtp_from_address or username
+
+        return {
+            "host": settings.smtp_host,
+            "port": settings.smtp_port,
+            "use_starttls": settings.smtp_use_starttls,
+            "username": username,
+            "password": password,
+            "from_address": from_address,
+        }
+
     async def execute(self, subject: str = "", body: str = "", to_email: str = "", to: str = "", **kwargs) -> ToolResult:
         # Accept both "to" and "to_email" (LLMs use different names)
         recipient = to_email or to or kwargs.get("recipient", "")
         if not recipient:
             return ToolResult(success=False, output="",
-                              error="Missing recipient — provide 'to_email' or 'to' parameter")
+                              error="Missing recipient \u2014 provide 'to_email' or 'to' parameter")
         if not subject:
             return ToolResult(success=False, output="", error="Missing 'subject' parameter")
         if not body:
             return ToolResult(success=False, output="", error="Missing 'body' parameter")
 
-        # Authenticate using OAuth2
-        creds = None
-        # Load existing token if available
-        if os.path.exists(TOKEN_PATH):
-            with open(TOKEN_PATH, 'rb') as token:
-                creds = pickle.load(token)
-        # If there are no valid credentials, let the user log in
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                credentials_path = os.path.join(settings.data_dir, 'gmail_credentials.json')
-                flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
-                creds = flow.run_local_server(port=0)
+        smtp_cfg = self._get_smtp_config()
 
-        # Save the credentials for the next run
-        with open(TOKEN_PATH, 'wb') as token:
-            pickle.dump(creds, token)
+        # Validate we have credentials
+        if not smtp_cfg["username"]:
+            return ToolResult(
+                success=False, output="",
+                error="No SMTP username configured. Set SMTP_USERNAME or GMAIL_ADDRESS environment variable."
+            )
+        if not smtp_cfg["password"]:
+            return ToolResult(
+                success=False, output="",
+                error="No SMTP password configured. Set SMTP_PASSWORD or GMAIL_APP_PASSWORD environment variable. "
+                      "For Gmail, generate an App Password at https://myaccount.google.com/apppasswords"
+            )
 
-        # Use the credentials to send the email
-        service = build('gmail', 'v1', credentials=creds)
-        message = MIMEText(body)
-        message['to'] = recipient
-        message['subject'] = subject
-        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        # Build the email message
+        msg = MIMEMultipart()
+        msg["From"] = smtp_cfg["from_address"]
+        msg["To"] = recipient
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain"))
 
+        # Send via SMTP in a thread to avoid blocking the event loop
         try:
-            message = (service.users().messages().send(userId='me', body={
-                'raw': raw_message
-            }).execute())
+            result = await asyncio.get_event_loop().run_in_executor(
+                None, self._send_smtp, smtp_cfg, recipient, msg
+            )
+            return result
+        except Exception as e:
+            return ToolResult(success=False, output="", error=f"Failed to send email: {e}. Troubleshooting: Check SMTP server ({smtp_cfg['host']}:{smtp_cfg['port']}), network connection, and credentials. For Gmail, ensure 'Less secure apps' is enabled or use an App Password.")
+
+    def _send_smtp(self, smtp_cfg: dict, recipient: str, msg: MIMEMultipart) -> ToolResult:
+        """Synchronous SMTP send (runs in executor thread)."""
+        try:
+            with smtplib.SMTP(smtp_cfg["host"], smtp_cfg["port"], timeout=20) as server:
+                server.ehlo()
+                if smtp_cfg["use_starttls"]:
+                    server.starttls()
+                    server.ehlo()
+                server.login(smtp_cfg["username"], smtp_cfg["password"])
+                server.sendmail(smtp_cfg["from_address"], recipient, msg.as_string())
             return ToolResult(success=True, output=f"Email sent to {recipient}", error=None)
-        except HttpError as error:
-            return ToolResult(success=False, output="", error=f"Failed to send email: {error}")
+        except smtplib.SMTPAuthenticationError as e:
+            return ToolResult(
+                success=False, output="",
+                error=f"SMTP authentication failed: {e}. "
+                      f"For Gmail, ensure you're using an App Password "
+                      f"(https://myaccount.google.com/apppasswords) "
+                      f"and that 2-Step Verification is enabled."
+            )
+        except smtplib.SMTPException as e:
+            return ToolResult(success=False, output="", error=f"SMTP error: {e}")
+        except Exception as e:
+            return ToolResult(success=False, output="", error=f"Failed to send email: {e}")

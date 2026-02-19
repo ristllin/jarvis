@@ -31,6 +31,15 @@ class Settings(BaseSettings):
     github_repo: Optional[str] = None   # e.g. https://github.com/user/jarvis.git
     gmail_address: Optional[str] = None
     gmail_password: Optional[str] = None
+    gmail_app_password: Optional[str] = None  # For SMTP with App Passwords
+
+    # SMTP Configuration (defaults to Gmail)
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_use_starttls: bool = True
+    smtp_username: Optional[str] = None  # Overrides gmail_address if set
+    smtp_password: Optional[str] = None  # Overrides gmail_app_password if set
+    smtp_from_address: Optional[str] = None  # Defaults to smtp_username or gmail_address
 
     # Initial directive
     initial_directive: str = (

@@ -125,6 +125,10 @@ async def get_logs(limit: int = 50):
 
 
 @router.get("/tools")
+@router.get("/tools/monitor")
+async def get_monitor_tool_status():
+    state = get_app_state()
+    return await state["tools"].monitor_tool.check_tools()
 async def get_tools():
     state = get_app_state()
     return {"tools": state["tools"].get_tool_schemas()}

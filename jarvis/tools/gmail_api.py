@@ -16,7 +16,12 @@ from jarvis.tools.base import Tool, ToolResult
 
 class GmailAPITool(Tool):
     name = "gmail_api"
-    description = "Interacts with Gmail API using OAuth2 authentication"
+    description = (
+        "Interacts with Gmail API using OAuth2 authentication. "
+        "NOTE: For simple email sending, prefer the 'send_email' tool which uses SMTP. "
+        "This tool requires OAuth2 credentials (gmail_credentials.json + token) "
+        "and is needed only for advanced Gmail operations like listing/reading messages."
+    )
     timeout_seconds = 30
 
     # Scopes required for Gmail API
@@ -27,49 +32,99 @@ class GmailAPITool(Tool):
         super().__init__()
         self._credentials = None
         self._service = None
+        self._setup_status = ""
         self._load_credentials()
+
+    def _ensure_credentials_file(self) -> Optional[str]:
+        """Ensure gmail_credentials.json exists.
+
+        If GMAIL_OAUTH_CLIENT_JSON env var is set (containing the full JSON
+        string from Google Cloud Console), write it to the expected path.
+        Returns the path if the file exists, None otherwise.
+        """
+        credentials_path = os.path.join(settings.data_dir, 'gmail_credentials.json')
+
+        # If file already exists, use it
+        if os.path.exists(credentials_path):
+            return credentials_path
+
+        # Try to create from environment variable
+        oauth_json = os.environ.get('GMAIL_OAUTH_CLIENT_JSON', '')
+        if oauth_json:
+            try:
+                # Validate it's proper JSON
+                json.loads(oauth_json)
+                with open(credentials_path, 'w') as f:
+                    f.write(oauth_json)
+                return credentials_path
+            except (json.JSONDecodeError, IOError) as e:
+                self._setup_status = f"GMAIL_OAUTH_CLIENT_JSON env var is set but invalid: {e}"
+                return None
+
+        self._setup_status = (
+            "Gmail OAuth2 credentials not found. To set up:\n"
+            "1. Go to https://console.cloud.google.com/apis/credentials\n"
+            "2. Create OAuth2 Client ID (Desktop application)\n"
+            "3. Download the JSON file\n"
+            "4. Either:\n"
+            "   a. Place it at /data/gmail_credentials.json, OR\n"
+            "   b. Set GMAIL_OAUTH_CLIENT_JSON env var with the file contents\n"
+            "5. Run the OAuth2 flow once to generate a token\n\n"
+            "For simple email sending, use the 'send_email' tool instead "
+            "(uses SMTP with App Password, no OAuth2 needed)."
+        )
+        return None
 
     def _load_credentials(self):
         """Load or create OAuth2 credentials"""
         creds = None
-        token_path = settings.data_dir + '/gmail_token.json'
-        credentials_path = settings.data_dir + '/gmail_credentials.json'
+        token_path = os.path.join(settings.data_dir, 'gmail_token.json')
 
-        # Check if token exists
+        # Check if token exists (previously authorized)
         if os.path.exists(token_path):
-            creds = Credentials.from_authorized_user_file(token_path, self.SCOPES)
+            try:
+                creds = Credentials.from_authorized_user_file(token_path, self.SCOPES)
+            except Exception as e:
+                self._setup_status = f"Failed to load token: {e}"
+                creds = None
 
-        # Check if credentials exist and token doesn't (need refresh)
-        if not creds and os.path.exists(credentials_path):
-            creds = self._refresh_credentials(credentials_path, token_path)
+        # If token is expired, try to refresh
+        if creds and creds.expired and creds.refresh_token:
+            try:
+                creds.refresh(Request())
+                with open(token_path, 'w') as token:
+                    token.write(creds.to_json())
+            except Exception as e:
+                self._setup_status = f"Failed to refresh token: {e}"
+                creds = None
 
-        # If no credentials, we need to run OAuth flow (manual process)
-        if not creds:
+        # If we have valid creds, build the service
+        if creds and creds.valid:
+            self._credentials = creds
+            self._service = build('gmail', 'v1', credentials=creds)
+            self._setup_status = "Gmail API ready"
+            return
+
+        # No valid token — check if credentials file exists for future OAuth flow
+        credentials_path = self._ensure_credentials_file()
+        if not credentials_path:
             self._credentials = None
             self._service = None
             return
 
-        # Check if token is expired and refresh if needed
-        if creds and creds.expired:
-            creds.refresh(Request())
-            with open(token_path, 'w') as token:
-                token.write(creds.to_json())
-
-        self._credentials = creds
-        self._service = build('gmail', 'v1', credentials=creds)
-
-    def _refresh_credentials(self, credentials_path: str, token_path: str) -> Optional[Credentials]:
-        """Refresh credentials from credentials file"""
-        try:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                credentials_path, self.SCOPES)
-            creds = flow.run_local_server(port=0)
-            with open(token_path, 'w') as token:
-                token.write(creds.to_json())
-            return creds
-        except Exception as e:
-            print(f"Error refreshing credentials: {e}")
-            return None
+        # We have credentials.json but no valid token
+        # NOTE: InstalledAppFlow.run_local_server() requires a browser,
+        # which won't work in a headless container. Log instructions.
+        self._setup_status = (
+            "Gmail OAuth2 credentials file found but no valid token. "
+            "The OAuth2 authorization flow requires a browser and cannot "
+            "run in a headless container. To authorize:\n"
+            "1. Run the OAuth2 flow on a machine with a browser\n"
+            "2. Copy the resulting token file to /data/gmail_token.json\n\n"
+            "For simple email sending, use the 'send_email' tool instead."
+        )
+        self._credentials = None
+        self._service = None
 
     def _get_service(self) -> Optional[Any]:
         """Ensure service is available"""

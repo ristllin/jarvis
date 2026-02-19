@@ -67,6 +67,9 @@ class BudgetTracker:
         self.session_factory = session_factory
 
     async def ensure_config(self):
+        log.info('Ensuring budget configuration...')
+        await session.commit()
+        log.info('Current BudgetConfig: %s', config)
         """Ensure budget config and provider balances exist."""
         async with self.session_factory() as session:
             # Budget config
