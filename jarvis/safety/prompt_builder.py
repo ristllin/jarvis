@@ -193,6 +193,13 @@ def build_system_prompt(
     sections.append(f"- Monthly cap (paid): ${budget_status.get('monthly_cap', 100.0):.2f}")
     sections.append(f"- Spent this month (paid): ${budget_status.get('spent', 0.0):.2f}")
     sections.append(f"- Remaining (paid): ${budget_status.get('remaining', 100.0):.2f}")
+    percent_used = budget_status.get('percent_used', 0)
+    if percent_used >= 80:
+        sections.append(
+            f"- ⚠️ **WARNING**: Paid budget is {percent_used:.0f}% used! "
+            f"Prefer free models (Mistral, Devstral, Ollama) for all tasks. "
+            f"Only use paid models for critical reasoning tasks."
+        )
     sections.append(
         f"- **FREE MODELS AVAILABLE**: Mistral Large, Mistral Small, Devstral Medium, "
         f"Devstral Small, and Ollama (local) cost **$0.00**. They are ALWAYS available "
