@@ -1,5 +1,6 @@
 services:
   jarvis:
+    build: .
     image: jarvis:latest
     env_file:
       - .env
@@ -30,4 +31,17 @@ services:
     depends_on:
       jarvis:
         condition: service_healthy
+    restart: unless-stopped
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    env_file:
+      - .env
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    volumes:
+      - ./ngrok-policy.yml:/etc/ngrok/policy.yml:ro
+    command: ["http", "nginx:80", "--domain=collins-saxicolous-moveably.ngrok-free.dev", "--traffic-policy-file=/etc/ngrok/policy.yml"]
+    depends_on:
+      - nginx
     restart: unless-stopped

@@ -13,47 +13,28 @@ JARVIS is **not** a chatbot. It is a persistent agent with an internal planning 
 cp .env.example .env
 # Edit .env with your actual keys
 
-# 2. Build the Docker image
-bash build.sh
+# 2. Build and run
+docker compose up -d --build
 
-# 3. Run
-docker compose up -d
-
-# 4. Open the dashboard
+# 3. Open the dashboard
 open http://localhost:3000
 # Or via nginx (port 80): open http://localhost
 ```
 
+The ngrok service starts automatically and exposes the dashboard at `https://collins-saxicolous-moveably.ngrok-free.dev` (Basic Auth: see `ngrok-policy.example.yml`). Ensure `NGROK_AUTHTOKEN` is in `.env` and `ngrok-policy.yml` exists.
+
 ## Remote Access (ngrok)
 
-To expose the dashboard over the internet with ngrok:
+ngrok runs automatically when you start the stack. The dashboard is exposed at `https://collins-saxicolous-moveably.ngrok-free.dev`.
 
-1. **Start JARVIS** with `docker compose up -d`. The nginx reverse proxy serves both frontend and API on port 80.
+**Basic Auth** (configured in `ngrok-policy.yml`):
+- Copy `ngrok-policy.example.yml` to `ngrok-policy.yml` and set your username:password
+- Or create `ngrok-policy.yml` with: `ristlin:your-strong-password`
+- This file is in `.gitignore` (contains credentials)
 
-2. **Run ngrok** (install from [ngrok.com](https://ngrok.com)):
-   ```bash
-   ./ngrok.sh
-   # Or: source .env && ngrok start --config ngrok.yml web
-   ```
-   Your dashboard will be at `https://collins-saxicolous-moveably.ngrok-free.dev` (or your configured domain).
-
-3. **Enable auth** in `.env`:
-   ```
-   AUTH_ENABLED=true
-   AUTH_BASE_URL=https://collins-saxicolous-moveably.ngrok-free.dev
-   AUTH_SECRET_KEY=<random-secret>
-   GOOGLE_CLIENT_ID=<from Google Cloud Console>
-   GOOGLE_CLIENT_SECRET=<from Google Cloud Console>
-   ALLOWED_EMAILS=ristlin@gmail.com,jarvis.bot.g.d@gmail.com
-   ```
-
-4. **Create Google OAuth credentials**:
-   - Go to [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials
-   - Create OAuth 2.0 Client ID (Web application)
-   - Add authorized redirect URI: `https://collins-saxicolous-moveably.ngrok-free.dev/api/auth/callback`
-   - Copy Client ID and Client Secret to `.env`
-
-Only emails in `ALLOWED_EMAILS` can access the dashboard when auth is enabled.
+**Requirements:**
+- `NGROK_AUTHTOKEN` in `.env` (from [ngrok dashboard](https://dashboard.ngrok.com))
+- `ngrok-policy.yml` present (or ngrok will fail to start — comment out the ngrok service in docker-compose if you don't need remote access)
 
 ## Architecture
 

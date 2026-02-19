@@ -1,7 +1,8 @@
 #!/bin/bash
+# Deprecated: use `docker compose build` instead (see Dockerfile).
 set -e
 
-echo "=== Building JARVIS Docker image ==="
+echo "=== Building JARVIS Docker image (legacy build.sh) ==="
 
 # Create a container from the base image, install deps, copy code
 CONTAINER_ID=$(docker create -it python:3.11-slim /bin/bash)
