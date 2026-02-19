@@ -60,6 +60,15 @@ async def get_memory_stats():
 
 
 @router.get("/memory/vector")
+@router.get("/debug")
+async def debug_info():
+    """Debug endpoint to check service status."""
+    return {"status": "ok"}
+
+@router.get("/tool-status")
+async def get_tool_status():
+    """Endpoint to get the status of tools."""
+    return {"tools": "active"}
 async def browse_vector_memory(query: str = None, limit: int = 50, offset: int = 0):
     """Browse or search vector memories."""
     state = get_app_state()
