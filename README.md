@@ -1,6 +1,6 @@
 # JARVIS — Persistent Autonomous AI Entity
 
-**Version 0.1.1 — Phase 1 MVP**
+**Version 0.2.0 — Phase 1 MVP**
 
 JARVIS is a persistent autonomous AI system that runs continuously, maintains long-term memory, has a configurable directive, and operates under strict safety constraints aligned with its creator.
 

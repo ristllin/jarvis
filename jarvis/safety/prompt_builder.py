@@ -339,7 +339,7 @@ def build_system_prompt(
         "### SELF_MODIFY (for git / deploy operations)\n"
         "Use `self_modify` for version control and deployment:\n"
         "- `self_modify action=diff` — see uncommitted changes\n"
-        "- `self_modify action=commit message='...'` — commit with version history\n"
+        "- `self_modify action=commit message='...'` — commit with auto version bump + changelog (v0.2.1, v0.2.2, ...)\n"
         "- `self_modify action=push` — push to GitHub remote\n"
         "- `self_modify action=pull` — pull latest from GitHub and sync to live\n"
         "- `self_modify action=redeploy message='...'` — commit + validate + restart\n"

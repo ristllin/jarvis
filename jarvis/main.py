@@ -26,6 +26,7 @@ from jarvis.memory.working import WorkingMemory
 from jarvis.observability.logger import FileLogger, get_logger, setup_logging
 from jarvis.safety.validator import SafetyValidator
 from jarvis.tools.registry import ToolRegistry
+from jarvis.version import __version__
 
 setup_logging()
 log = get_logger("main")
@@ -198,7 +199,7 @@ def _restart_loop(core_loop: CoreLoop):
     asyncio.create_task(core_loop.run())
 
 
-app = FastAPI(title="JARVIS", version="0.1.1", lifespan=lifespan)
+app = FastAPI(title="JARVIS", version=__version__, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
