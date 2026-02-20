@@ -1,6 +1,7 @@
 from jarvis.budget.tracker import BudgetTracker
 from jarvis.llm.base import LLMProvider, LLMResponse
 from jarvis.llm.providers.anthropic import AnthropicProvider
+from jarvis.llm.providers.grok import GrokProvider
 from jarvis.llm.providers.mistral import MistralProvider
 from jarvis.llm.providers.ollama import OllamaProvider
 from jarvis.llm.providers.openai import OpenAIProvider
@@ -13,16 +14,19 @@ DEFAULT_TIERS = {
     "level1": [
         ("anthropic", "claude-opus-4-6", "high"),
         ("openai", "gpt-5.2", "high"),
+        ("grok", "grok-4-1-fast-reasoning", "medium"),
         ("mistral", "mistral-large-latest", "medium"),
     ],
     "level2": [
         ("anthropic", "claude-sonnet-4-20250514", "medium"),
+        ("grok", "grok-3-mini", "low"),
         ("openai", "gpt-4o", "medium"),
         ("openai", "gpt-4o-mini", "low"),
         ("mistral", "mistral-small-latest", "low"),
         ("anthropic", "claude-haiku-35-20241022", "medium"),
     ],
     "level3": [
+        ("grok", "grok-3-mini", "low"),
         ("ollama", "mistral:7b-instruct", "free"),
         ("openai", "gpt-4o-mini", "low"),
         ("mistral", "mistral-small-latest", "low"),
@@ -51,6 +55,7 @@ class LLMRouter:
         providers = [
             AnthropicProvider(),
             OpenAIProvider(),
+            GrokProvider(),
             MistralProvider(),
             OllamaProvider(),
         ]

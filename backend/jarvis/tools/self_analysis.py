@@ -246,8 +246,6 @@ class SelfAnalysisTool(Tool):
 
     async def _functional_llm(self) -> str:
         lines = ["## Functional: LLM Provider Ping\n"]
-        if not self.router:
-            return "## Functional: LLM\n- Router not available\n"
 
         test_providers = [
             ("mistral", "mistral-small-latest", "free"),
@@ -255,12 +253,39 @@ class SelfAnalysisTool(Tool):
             ("grok", "grok-3-mini", "paid"),
         ]
 
+        providers = {}
+        if self.router and hasattr(self.router, "providers"):
+            providers = self.router.providers
+        else:
+            # Instantiate providers directly when no router available (standalone test)
+            try:
+                if settings.mistral_api_key:
+                    from jarvis.llm.providers.mistral import MistralProvider
+                    providers["mistral"] = MistralProvider()
+            except Exception:
+                pass
+            try:
+                if settings.anthropic_api_key:
+                    from jarvis.llm.providers.anthropic import AnthropicProvider
+                    providers["anthropic"] = AnthropicProvider()
+            except Exception:
+                pass
+            try:
+                if getattr(settings, "grok_api_key", None):
+                    from jarvis.llm.providers.grok import GrokProvider
+                    providers["grok"] = GrokProvider()
+            except Exception:
+                pass
+
+        if not providers:
+            return "## Functional: LLM\n- No providers available (no API keys configured)\n"
+
         for provider_name, model, cost_label in test_providers:
-            if provider_name not in self.router.providers:
+            if provider_name not in providers:
                 lines.append(f"- {provider_name}/{model}: SKIP (not configured)\n")
                 continue
             try:
-                provider = self.router.providers[provider_name]
+                provider = providers[provider_name]
                 t0 = time.time()
                 resp = await provider.complete(
                     messages=[{"role": "user", "content": "Say OK"}],
