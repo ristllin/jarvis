@@ -94,6 +94,7 @@ else
         # Force-update critical infrastructure files that the image updated
         # (these are "ours" — from the developer, not JARVIS's modifications)
         for f in \
+            jarvis/version.py \
             jarvis/tools/registry.py \
             jarvis/tools/coding_agent.py \
             jarvis/tools/self_modify.py \
@@ -137,6 +138,15 @@ else
 
         echo "$IMAGE_HASH" > /data/code/.image_hash
         echo "[entrypoint] Image update merged and committed"
+    fi
+
+    # ── 2c. Always fix stale version.py (e.g. 0.1.1 -> 0.2.0 after image update) ─
+    if [ -f "/app/jarvis/version.py" ]; then
+        BACKUP_VER=$(grep -E '__version__\s*=' "$CODE_BACKUP/backend/jarvis/version.py" 2>/dev/null | sed -n 's/.*"\([0-9.]*\)".*/\1/p' || echo "")
+        if [ -z "$BACKUP_VER" ] || [ "$BACKUP_VER" = "0.1.1" ] || [ "$BACKUP_VER" = "0.1.0" ]; then
+            cp -f /app/jarvis/version.py "$CODE_BACKUP/backend/jarvis/version.py"
+            echo "[entrypoint] Updated backup version.py from image (was $BACKUP_VER)"
+        fi
     fi
 
     # ── 3. Check if last boot crashed (revert flag) ───────────────────────
