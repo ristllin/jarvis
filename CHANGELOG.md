@@ -74,4 +74,9 @@ All notable changes from JARVIS self-modifications.
 **Commit:** Deploy crypto_trading tool v0.2.3
 
 ### Files changed
+## [0.2.5] - 2026-02-20
+
+**Commit:** Fix crypto_trading registry registration
+
+### Files changed
 
