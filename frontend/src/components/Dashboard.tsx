@@ -75,6 +75,11 @@ export function Dashboard({ status, budget, memory, lastMessage }: Props) {
 
         <Card title="Active Task" icon={<Activity size={16} />} color="blue">
           <p className="text-sm text-gray-200">{status?.active_task || 'Idle'}</p>
+          {status?.current_model && (
+            <p className="text-xs text-gray-500 mt-1">
+              Model: <span className="font-mono text-gray-400">{status.current_model}</span>
+            </p>
+          )}
         </Card>
 
         <Card title="Budget" icon={<DollarSign size={16} />} color="green">

@@ -34,6 +34,7 @@ async def get_status():
             "current_sleep_seconds": core_loop._current_sleep_seconds,
             "min_sleep_seconds": 10,
             "max_sleep_seconds": 3600,
+            "current_model": getattr(core_loop, "_current_model", "") or None,
         }
     return {
         "status": "running" if not current.get("is_paused") else "paused",
@@ -417,6 +418,9 @@ async def chat(body: ChatRequest):
 
     return ChatResponse(
         reply=reply_text,
+        model=pending.response_model or None,
+        provider=pending.response_provider or None,
+        tokens_used=pending.response_tokens or None,
         actions_taken=pending.actions_taken if pending.actions_taken else None,
         agentic=True,
     )

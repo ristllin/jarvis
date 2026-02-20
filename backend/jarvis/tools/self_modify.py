@@ -365,7 +365,11 @@ class SelfModifyTool(Tool):
                 )
                 await proc.communicate()
             except FileNotFoundError:
-                shutil.copytree(cwd, "/app", dirs_exist_ok=True)
+                proc = await asyncio.create_subprocess_exec(
+                    "cp", "-a", cwd + "/.", "/app/",
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                )
+                await proc.communicate()
 
             if self.blob:
                 self.blob.store(
@@ -396,7 +400,11 @@ class SelfModifyTool(Tool):
                 )
                 await proc.communicate()
             except FileNotFoundError:
-                shutil.copytree(cwd, "/app", dirs_exist_ok=True)
+                proc = await asyncio.create_subprocess_exec(
+                    "cp", "-a", cwd + "/.", "/app/",
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                )
+                await proc.communicate()
 
             # 3. Validate the new code can at least import
             proc = await asyncio.create_subprocess_exec(
@@ -422,9 +430,11 @@ class SelfModifyTool(Tool):
                 )
 
             # 4. Signal uvicorn to gracefully restart
-            # SIGHUP tells uvicorn parent to restart workers
-            log.info("redeploy_restart", message=message)
-            os.kill(os.getpid(), signal.SIGHUP)
+            # With --workers 1: worker's parent is main uvicorn; signal parent.
+            # Single process (no workers): we are main; signal self.
+            target_pid = os.getppid() if os.getppid() != 1 else os.getpid()
+            log.info("redeploy_restart", message=message, target_pid=target_pid)
+            os.kill(target_pid, signal.SIGHUP)
 
             return ToolResult(
                 success=True,

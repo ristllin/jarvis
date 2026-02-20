@@ -28,13 +28,17 @@ DEFAULT_TIERS = {
         ("openai", "gpt-4o", "medium"),
         ("grok", "grok-4-1-fast-non-reasoning", "low"), # Cheap, no reasoning overhead
         ("mistral", "mistral-large-latest", "free"),
+        ("mistral", "devstral-medium-2507", "free"),    # Devstral before tiny models — better quality
+        ("mistral", "devstral-small-2507", "free"),
         ("grok", "grok-3-mini", "low"),
         ("anthropic", "claude-haiku-35-20241022", "low"),
         ("mistral", "mistral-small-latest", "free"),
     ],
     "level3": [
+        ("mistral", "devstral-small-2507", "free"),     # Devstral first — avoid tiny model degradation
         ("mistral", "mistral-small-latest", "free"),
-        ("grok", "grok-3-mini", "low"),                 # Very cheap fallback
+        ("mistral", "devstral-medium-2507", "free"),
+        ("grok", "grok-3-mini", "low"),
         ("openai", "gpt-4o-mini", "low"),
         ("ollama", "mistral:7b-instruct", "free"),
     ],

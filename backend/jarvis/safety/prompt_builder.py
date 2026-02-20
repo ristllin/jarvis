@@ -230,7 +230,11 @@ def build_system_prompt(
         "**`code_exec`** — Run arbitrary Python. Quick scripts, testing, automation.\n\n"
         "**`web_search` + `web_browse`** — Research anything on the internet.\n\n"
         "**`send_email`** — Communicate with your creator and the world.\n\n"
-        "**`skills`** — Your knowledge base. Read/write reusable patterns and knowledge.\n"
+        "**`skills`** — Your knowledge base. Read/write reusable patterns and knowledge.\n\n"
+        "**`self_analysis`** — Run self-diagnostics. Check providers, Grok connectivity, email config, budget. "
+        "Use when debugging 'chat not responding' or 'email not responding'. "
+        "Parameters: `check` = all|providers|grok|email|tools|budget.\n\n"
+        "**`coingecko`** — Cryptocurrency data (top coins, prices, 24h changes) via CoinGecko API.\n"
     )
 
     # Self-modification section

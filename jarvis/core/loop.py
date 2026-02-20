@@ -20,6 +20,12 @@ log = get_logger("core_loop")
 MIN_SLEEP_SECONDS = 10
 MAX_SLEEP_SECONDS = 600   # 10 minutes max (free models mean never fully hibernate)
 DEFAULT_SLEEP_SECONDS = 30
+# When only tiny models available for reasoning, hibernate longer to avoid degradation
+HIBERNATE_WHEN_TINY_ONLY_SECONDS = 600  # 10 min — prefer waiting over tiny-model reasoning drift
+TINY_MODELS = frozenset({
+    "grok-3-mini", "gpt-4o-mini", "mistral-small-latest",
+    "mistral:7b-instruct", "triage-only",
+})
 
 
 @dataclass
@@ -60,6 +66,7 @@ class CoreLoop:
         # Wake event — set by chat or external triggers to interrupt sleep
         self._wake_event = asyncio.Event()
         self._current_sleep_seconds = DEFAULT_SLEEP_SECONDS
+        self._current_model = ""  # Model used for reasoning on last/current task
         # Chat queue — messages from the creator waiting for the next iteration
         self._pending_chats: list[PendingChat] = []
 
@@ -124,8 +131,17 @@ class CoreLoop:
         Key principle: if free providers (Mistral, Devstral, Ollama) are available,
         NEVER auto-throttle to long sleeps. Free models cost nothing — JARVIS should
         stay active and productive using them even when paid budget is depleted.
+
+        When only tiny models are available for reasoning (no Devstral/Mistral Large),
+        prefer longer hibernation to avoid quality degradation over time.
         """
         has_free = self._has_free_providers(budget_status)
+        model_used = plan.get("_response_model", "") or ""
+        is_tiny_model = model_used in TINY_MODELS or (
+            model_used.startswith("mistral:") or model_used.startswith("ollama/")
+        )
+        remaining = budget_status.get("remaining", 100.0)
+        actions = plan.get("actions", [])
 
         # 1. Check if JARVIS explicitly requested a sleep duration
         requested = plan.get("sleep_seconds")
@@ -144,20 +160,24 @@ class CoreLoop:
             except (TypeError, ValueError):
                 pass
 
-        # 2. Budget-aware auto-throttle — but ONLY if no free providers exist
-        remaining = budget_status.get("remaining", 100.0)
+        # 2. Budget exhausted + only tiny models + no actions → hibernate longer
+        if remaining <= 5.0 and not has_free and is_tiny_model and not actions:
+            log.info("hibernate_tiny_only",
+                     model=model_used, remaining=remaining,
+                     reason="Only tiny models available; hibernating to avoid quality drift")
+            return HIBERNATE_WHEN_TINY_ONLY_SECONDS
 
+        # 3. Budget-aware auto-throttle — but ONLY if no free providers exist
         if remaining <= 1.0 and not has_free:
             return MAX_SLEEP_SECONDS
         elif remaining <= 1.0 and has_free:
             return 60  # Free models available — stay active, just pace yourself
 
-        # 3. If JARVIS had no actions, moderate sleep (not too long)
-        actions = plan.get("actions", [])
+        # 4. If JARVIS had no actions, moderate sleep (not too long)
         if not actions:
             return 60 if has_free else 120
 
-        # 4. Default
+        # 5. Default
         return DEFAULT_SLEEP_SECONDS
 
     async def run(self):
@@ -342,8 +362,9 @@ class CoreLoop:
                         if key in memory_config_update:
                             working.update_config(**{key: memory_config_update[key]})
 
-                # 10. Update active task
+                # 10. Update active task and current model
                 await self.state.update(active_task=status_msg)
+                self._current_model = plan.get("_response_model", "") or ""
 
                 # 11. Periodic maintenance (every 10 iterations)
                 if iteration % 10 == 0:

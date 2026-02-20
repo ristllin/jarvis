@@ -12,6 +12,7 @@ export interface JarvisStatus {
   current_sleep_seconds?: number
   min_sleep_seconds?: number
   max_sleep_seconds?: number
+  current_model?: string | null
 }
 
 export interface ProviderStatus {

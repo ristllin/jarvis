@@ -7,8 +7,14 @@ from datetime import datetime, timezone, timedelta
 
 log = get_logger("state")
 
-DEFAULT_SHORT_GOALS = ["Initialize systems and understand my capabilities"]
-DEFAULT_MID_GOALS = ["Develop self-improvement projects", "Test and document all tools"]
+DEFAULT_SHORT_GOALS = [
+    "Run self_analysis to verify Grok, providers, and email config",
+    "Ensure chat and email responding; use Devstral as fallback over tiny models",
+]
+DEFAULT_MID_GOALS = [
+    "Crypto (coingecko), web search (Tavily) — done. Telegram integration if needed.",
+    "Monitor stability; run capability tests; improve self-modification safety.",
+]
 DEFAULT_LONG_GOALS = [
     "Continuously improve own code, memory, and capabilities",
     "Generate value and resources through work in the world",

@@ -19,6 +19,8 @@ from jarvis.tools.env_manager import EnvManagerTool
 from jarvis.tools.memory_config import MemoryConfigTool
 from jarvis.tools.news_monitor import NewsMonitorTool
 from jarvis.tools.credit_monitor import CreditMonitorTool
+from jarvis.tools.coingecko import CoinGeckoTool
+from jarvis.tools.self_analysis import SelfAnalysisTool
 from jarvis.memory.vector import VectorMemory
 from jarvis.memory.working import WorkingMemory
 from jarvis.safety.validator import SafetyValidator
@@ -59,6 +61,7 @@ class ToolRegistry:
             HttpRequestTool(),
             EnvManagerTool(),
             NewsMonitorTool(),
+            CoinGeckoTool(),
         ]
         if working:
             default_tools.append(MemoryConfigTool(working))
@@ -69,6 +72,7 @@ class ToolRegistry:
         if llm_router:
             default_tools.append(LLMConfigTool(llm_router))
             default_tools.append(CodingAgentTool(llm_router, blob_storage=blob_storage))
+            default_tools.append(SelfAnalysisTool(llm_router=llm_router, budget_tracker=budget_tracker))
         for tool in default_tools:
             self.tools[tool.name] = tool
             log.info("tool_registered", tool=tool.name)

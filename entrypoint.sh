@@ -115,6 +115,8 @@ else
             jarvis/api/schemas.py \
             jarvis/llm/router.py \
             jarvis/llm/providers/grok.py \
+            jarvis/tools/coingecko.py \
+            jarvis/tools/self_analysis.py \
             jarvis/budget/tracker.py \
             jarvis/memory/working.py \
             jarvis/memory/vector.py \
@@ -234,4 +236,5 @@ cd /app
     fi
 ) &
 
-exec python -m uvicorn jarvis.main:app --host 0.0.0.0 --port 8000 --log-level info
+# --workers 1 required for SIGHUP graceful restart (self_modify redeploy)
+exec python -m uvicorn jarvis.main:app --host 0.0.0.0 --port 8000 --log-level info --workers 1
