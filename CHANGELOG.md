@@ -79,4 +79,9 @@ All notable changes from JARVIS self-modifications.
 **Commit:** Fix crypto_trading registry registration
 
 ### Files changed
+## [0.2.6] - 2026-02-20
+
+**Commit:** Reload crypto_trading registry fix
+
+### Files changed
 
