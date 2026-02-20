@@ -84,4 +84,9 @@ All notable changes from JARVIS self-modifications.
 **Commit:** Reload crypto_trading registry fix
 
 ### Files changed
+## [0.2.7] - 2026-02-20
 
+**Commit:** Recreate/fix crypto_trading tool (direct http coingecko) & registry
+
+### Files changed
+  - jarvis/tools/registry.py

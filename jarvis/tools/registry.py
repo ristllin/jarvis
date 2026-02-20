@@ -11,6 +11,7 @@ from jarvis.tools.budget_query import BudgetQueryTool
 from jarvis.tools.code_exec import CodeExecTool
 from jarvis.tools.coding_agent import CodingAgentTool
 from jarvis.tools.coingecko import CoinGeckoTool
+from jarvis.tools.crypto_trading import CryptoTradingTool
 from jarvis.tools.env_manager import EnvManagerTool
 from jarvis.tools.file_ops import FileListTool, FileReadTool, FileWriteTool
 from jarvis.tools.git_ops import GitTool
@@ -79,6 +80,7 @@ class ToolRegistry:
             EnvManagerTool(),
             NewsMonitorTool(),
             CoinGeckoTool(),
+            CryptoTradingTool(),
         ]
         if working:
             default_tools.append(MemoryConfigTool(working))
