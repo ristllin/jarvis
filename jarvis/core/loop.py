@@ -18,7 +18,7 @@ log = get_logger("core_loop")
 
 # Sleep bounds — kept short because free models (Mistral, Devstral, Ollama) are always available
 MIN_SLEEP_SECONDS = 10
-MAX_SLEEP_SECONDS = 600   # 10 minutes max (free models mean never fully hibernate)
+MAX_SLEEP_SECONDS = 3600
 DEFAULT_SLEEP_SECONDS = 30
 # When only tiny models available for reasoning, hibernate longer to avoid degradation
 HIBERNATE_WHEN_TINY_ONLY_SECONDS = 600  # 10 min — prefer waiting over tiny-model reasoning drift

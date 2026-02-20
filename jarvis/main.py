@@ -3,6 +3,7 @@ import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 
 from jarvis.config import settings
 from jarvis.database import engine, async_session, Base
@@ -21,6 +22,8 @@ from jarvis.core.loop import CoreLoop
 from jarvis.core.email_listener import EmailInboxListener
 from jarvis.core.watchdog import Watchdog
 from jarvis.api.routes import router as api_router
+from jarvis.api.auth import router as auth_router
+from jarvis.api.auth_middleware import AuthMiddleware
 from jarvis.api.websocket import ws_manager
 
 setup_logging()
@@ -201,12 +204,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(SessionMiddleware, secret_key=settings.auth_secret_key)
+app.add_middleware(AuthMiddleware)
 
 app.include_router(api_router)
+app.include_router(auth_router)
 
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    if settings.auth_enabled:
+        session = websocket.scope.get("session") or {}
+        if not session.get("user"):
+            await websocket.close(code=4001)
+            return
     await ws_manager.connect(websocket)
     try:
         while True:

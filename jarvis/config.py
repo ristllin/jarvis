@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import Optional
+from typing import Optional, List
 
 
 class Settings(BaseSettings):
@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     email_listener_enabled: bool = False
     email_listener_interval_seconds: int = 300  # 5 minutes
 
+    # Dashboard auth (Google OAuth — for remote/ngrok access)
+    auth_enabled: bool = False
+    auth_base_url: str = "http://localhost"  # Base URL for OAuth redirects (use ngrok URL when remote)
+    auth_secret_key: str = "change-me-in-production"
+    google_client_id: Optional[str] = None
+    google_client_secret: Optional[str] = None
+    allowed_emails: str = "ristlin@gmail.com,jarvis.bot.g.d@gmail.com"  # Comma-separated
+
     # Initial directive
     initial_directive: str = (
         "Improve yourself — optimize your own code, memory, and capabilities. "
@@ -57,6 +65,10 @@ class Settings(BaseSettings):
     )
 
     model_config = {"env_file": ".env", "extra": "ignore"}
+
+    @property
+    def allowed_emails_set(self) -> set[str]:
+        return {e.strip().lower() for e in self.allowed_emails.split(",") if e.strip()}
 
 
 settings = Settings()

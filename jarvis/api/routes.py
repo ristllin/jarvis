@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from sqlalchemy import select, desc
 from jarvis.api.schemas import (
@@ -262,6 +262,16 @@ async def override_budget(body: BudgetOverride):
     return {"ok": True, "new_cap": body.new_cap_usd}
 
 
+
+@router.get("/news")
+async def get_news():
+    """Fetch news data from the news monitoring service."""
+    from jarvis.tools.news_monitor import NewsMonitorTool
+    news_tool = NewsMonitorTool()
+    result = await news_tool.execute(query="latest news", max_results=5)
+    return {"news": result.output}
+
+
 # ── Provider balance management ───────────────────────────────────────────
 
 @router.get("/providers")
@@ -466,7 +476,6 @@ async def get_analytics(range: str = "24h"):
     Range: 1h, 6h, 24h, 7d, 30d
     Returns buckets with: cost, tokens, model calls, tool calls, errors.
     """
-    from datetime import timedelta
     from sqlalchemy import text
 
     state = get_app_state()
@@ -641,15 +650,76 @@ async def get_analytics(range: str = "24h"):
     }
 
 
+@router.get("/tool-status")
+async def get_tool_status():
+    """Get status and recent usage stats for all registered tools."""
+    from sqlalchemy import text
+
+    state = get_app_state()
+    tools_registry = state["tools"]
+    session_factory = state["session_factory"]
+
+    # Get all registered tool names and schemas
+    tool_schemas = tools_registry.get_tool_schemas()
+    tool_names = tools_registry.get_tool_names()
+
+    # Query recent usage stats per tool from tool_usage_log
+    since_str = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+
+    async with session_factory() as session:
+        rows = await session.execute(
+            text("""
+                SELECT
+                    tool_name,
+                    COUNT(*) as total_calls,
+                    SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successful,
+                    SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as failed,
+                    AVG(duration_ms) as avg_duration_ms,
+                    MAX(timestamp) as last_used
+                FROM tool_usage_log
+                WHERE timestamp >= :since
+                GROUP BY tool_name
+            """),
+            {"since": since_str},
+        )
+        usage_data = rows.fetchall()
+
+    # Build a lookup of usage stats by tool name
+    usage_map = {}
+    for row in usage_data:
+        tool_name, total, successful, failed, avg_dur, last_used = row
+        usage_map[tool_name] = {
+            "total_calls_24h": total or 0,
+            "successful_24h": successful or 0,
+            "failed_24h": failed or 0,
+            "avg_duration_ms": round(avg_dur, 1) if avg_dur else None,
+            "last_used": last_used,
+        }
+
+    # Combine tool schemas with usage stats
+    tools_status = []
+    for schema in tool_schemas:
+        name = schema["name"]
+        usage = usage_map.get(name, {
+            "total_calls_24h": 0,
+            "successful_24h": 0,
+            "failed_24h": 0,
+            "avg_duration_ms": None,
+            "last_used": None,
+        })
+        tools_status.append({
+            "name": name,
+            "description": schema.get("description", ""),
+            "registered": True,
+            **usage,
+        })
+
+    return {
+        "total_tools": len(tool_names),
+        "tools": tools_status,
+    }
+
+
 @router.get("/health")
 async def health():
     return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
-
-
-@router.get("/news")
-async def get_news():
-    """Fetch news data from the news monitoring service."""
-    from jarvis.tools.news_monitor import NewsMonitorTool
-    news_tool = NewsMonitorTool()
-    result = await news_tool.execute(query="latest news", max_results=5)
-    return {"news": result.output}

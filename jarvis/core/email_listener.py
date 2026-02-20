@@ -1,11 +1,10 @@
 import asyncio
 import email
 import imaplib
-import re
 import socket
 from dataclasses import dataclass
 from email.header import decode_header
-from typing import Optional, Callable, List
+from typing import Optional, Callable
 
 from jarvis.config import settings
 from jarvis.observability.logger import get_logger
@@ -17,27 +16,6 @@ log = get_logger("email_listener")
 CREATOR_EMAIL = "ristlin@gmail.com"
 GMAIL_IMAP_HOST = "imap.gmail.com"
 GMAIL_IMAP_PORT = 993
-
-
-def _extract_email_address(from_header: str) -> str:
-    """Extract the actual email address from a From header, ignoring display names.
-    
-    Examples:
-        "Ristlin <ristlin@gmail.com>" -> "ristlin@gmail.com"
-        "ristlin@gmail.com" -> "ristlin@gmail.com"
-        "<ristlin@gmail.com>" -> "ristlin@gmail.com"
-    """
-    # Remove any display name part
-    if "<" in from_header and ">" in from_header:
-        # Extract angle-bracket part
-        match = re.search(r"<([^>]+)>", from_header)
-        if match:
-            return match.group(1).strip()
-    # If no angle brackets, just take the last word (after spaces)
-    parts = from_header.strip().split()
-    if len(parts) > 0:
-        return parts[-1].strip()
-    return from_header.strip()
 
 
 @dataclass

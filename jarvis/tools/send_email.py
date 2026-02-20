@@ -24,6 +24,7 @@ class SendEmailTool(Tool):
             "required": ["subject", "body", "to_email"],
         }
 
+<<<<<<< HEAD
     def _get_smtp_config(self) -> dict:
         """Resolve SMTP configuration from settings with sensible fallbacks."""
         # Resolve username: smtp_username -> gmail_address
@@ -45,6 +46,10 @@ class SendEmailTool(Tool):
         }
 
     async def execute(self, subject: str = "", body: str = "", to_email: str = "", to: str = "", **kwargs) -> ToolResult:
+=======
+    async def execute(self, subject: str = "", body: str = "", to_email: str = "",
+                      to: str = "", **kwargs) -> ToolResult:
+>>>>>>> 017397903736fca09b141b64e7932ee73f41044a
         # Accept both "to" and "to_email" (LLMs use different names)
         recipient = to_email or to or kwargs.get("recipient", "")
         if not recipient:
@@ -55,6 +60,7 @@ class SendEmailTool(Tool):
         if not body:
             return ToolResult(success=False, output="", error="Missing 'body' parameter")
 
+<<<<<<< HEAD
         smtp_cfg = self._get_smtp_config()
 
         # Validate we have credentials
@@ -76,9 +82,45 @@ class SendEmailTool(Tool):
         msg["To"] = recipient
         msg["Subject"] = subject
         msg.attach(MIMEText(body, "plain"))
+=======
+        # Prefer explicit SMTP settings; fall back to Gmail App Password
+        username = settings.smtp_username or settings.gmail_address
+        password = settings.smtp_password or settings.gmail_app_password
+        from_addr = settings.smtp_from_address or username
+
+        if not username or not password or not from_addr:
+            return ToolResult(
+                success=False,
+                output="",
+                error=(
+                    "SMTP credentials must be set in configuration. Set smtp_username, smtp_password "
+                    "(and optionally smtp_from_address). For legacy support you can set gmail_address/gmail_password."
+                ),
+            )
+
+        msg = MIMEMultipart()
+        msg["From"] = from_addr
+        msg["To"] = recipient
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain"))
+
+        def _send() -> None:
+            server = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=self.timeout_seconds)
+            try:
+                if settings.smtp_use_starttls:
+                    server.starttls()
+                server.login(username, password)
+                server.sendmail(from_addr, recipient, msg.as_string())
+            finally:
+                try:
+                    server.quit()
+                except Exception:
+                    pass
+>>>>>>> 017397903736fca09b141b64e7932ee73f41044a
 
         # Send via SMTP in a thread to avoid blocking the event loop
         try:
+<<<<<<< HEAD
             result = await asyncio.get_event_loop().run_in_executor(
                 None, self._send_smtp, smtp_cfg, recipient, msg
             )
@@ -107,5 +149,9 @@ class SendEmailTool(Tool):
             )
         except smtplib.SMTPException as e:
             return ToolResult(success=False, output="", error=f"SMTP error: {e}")
+=======
+            await asyncio.to_thread(_send)
+            return ToolResult(success=True, output=f"Email sent to {recipient}", error=None)
+>>>>>>> 017397903736fca09b141b64e7932ee73f41044a
         except Exception as e:
             return ToolResult(success=False, output="", error=f"Failed to send email: {e}")
