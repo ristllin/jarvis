@@ -35,8 +35,9 @@
 
 ## self_analysis — Diagnostics & Functional Tests
 - `check=all` — config checks (providers, email, tools, budget)
-- `check=functional` — end-to-end tests (email round-trip, LLM ping, vector write+search)
+- `check=functional` — end-to-end tests (email round-trip, LLM ping, vector write+search, news)
 - `check=functional_email` / `functional_telegram` / `functional_llm` / `functional_memory`
+- **Run after every deploy** to verify tools and integrations. See `jarvis-deployment-verification.md`.
 
 ## memory_config — Tune Memory
 - `action=view` — see current settings

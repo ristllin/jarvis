@@ -27,11 +27,13 @@ Follow the pattern from `email_listener.py` or `telegram_listener.py`:
 4. `self_modify action=commit message='...'` → version
 5. `self_modify action=push` → backup
 
-## Testing
-- `self_analysis check=functional` — end-to-end round-trip tests
+## Testing (REQUIRED before finishing)
+- **Always** run `self_analysis check=functional` after deploy — verifies email, telegram, LLM, vector, news
+- **Always** verify new tools: `curl -sf localhost:8000/api/tool-status | grep tool_name`
 - `self_analysis check=all` — config checks
 - Import validation: `python -c "import jarvis.module"`
 - Unit tests in `jarvis/tests/`
+- See skill `jarvis-deployment-verification.md` for full checklist
 
 ## Frontend Changes
 - Edit `frontend/src/components/` for UI

@@ -15,7 +15,17 @@ alwaysApply: true
 ## Build & Deploy
 - `build.sh` syncs `jarvis/` → `backend/jarvis/`, then `docker compose build` + `up`
 - `build.sh --sync-only` for code sync without rebuild
-- Always edit `backend/jarvis/` then run reverse sync or edit both
+- **Compose has no build config** — uses `image: jarvis:latest`. To rebuild: `docker build -t jarvis:latest -f Dockerfile .`
+- Always edit `backend/jarvis/` then `rsync -a backend/jarvis/ jarvis/` (reverse sync) or edit both
+
+## Code Sync Chain (CRITICAL — follow before finishing any change)
+1. **Source of truth**: `backend/jarvis/` (what Dockerfile copies)
+2. **build.sh** syncs `jarvis/` → `backend/jarvis/` before build (jarvis can be stale)
+3. **Docker image** = `COPY backend/ .` — must rebuild to pick up changes
+4. **Host `data/code/`** = bind-mounted to `/data` — entrypoint restores this → `/app/` on boot
+5. **On image update**: entrypoint rsyncs image `/app/` → `data/code/` (image wins)
+6. **Git**: Commit both `jarvis/` and `backend/jarvis/` changes. Push to remote.
+7. **After deploy**: Run `self_analysis check=functional` and verify tools via `/api/tool-status`
 
 ## Core Loop
 ```
