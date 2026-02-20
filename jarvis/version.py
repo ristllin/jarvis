@@ -1,3 +1,3 @@
 """Single source of truth for JARVIS version."""
 
-__version__ = "0.2.8"
+__version__ = "0.2.9"

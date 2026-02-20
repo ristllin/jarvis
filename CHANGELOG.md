@@ -95,4 +95,9 @@ All notable changes from JARVIS self-modifications.
 **Commit:** Deploy fixed crypto_trading v0.2.7
 
 ### Files changed
+## [0.2.9] - 2026-02-20
+
+**Commit:** Add standalone crypto monitor.py (signals/portfolio sim)
+
+### Files changed
 
