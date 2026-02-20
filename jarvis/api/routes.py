@@ -1,4 +1,5 @@
 import json
+import subprocess
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter
@@ -735,6 +736,25 @@ async def get_iteration_history(limit: int = 20):
     return {"iterations": iterations}
 
 
+def _get_git_commit() -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd="/app",
+            timeout=5,
+            text=True,
+        ).strip()
+    except Exception:
+        return "unknown"
+
+
+_GIT_COMMIT = _get_git_commit()
+
+
 @router.get("/health")
 async def health():
-    return {"status": "ok", "timestamp": datetime.now(UTC).isoformat()}
+    return {
+        "status": "ok",
+        "timestamp": datetime.now(UTC).isoformat(),
+        "git_commit": _GIT_COMMIT,
+    }
