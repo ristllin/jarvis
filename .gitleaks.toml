@@ -1,0 +1,25 @@
+[extend]
+# Extends the default gitleaks ruleset
+
+title = "Jarvis Gitleaks Config"
+
+[allowlist]
+description = "Global allowlist"
+paths = [
+    '''\.env\.example$''',
+    '''tests/.*''',
+    '''\.gitleaks\.toml$''',
+    '''node_modules/.*''',
+    '''\.venv/.*''',
+    '''data/.*''',
+]
+# Patterns that are known false positives (test fixtures, placeholder values)
+regexTarget = "match"
+regexes = [
+    '''fake[-_]?(token|key|secret|password)''',
+    '''test[-_]?(token|key|secret|password)''',
+    '''sk-test-secret-key-12345''',
+    '''xai-test-key''',
+    '''change-me-in-production''',
+    '''REDACTED''',
+]

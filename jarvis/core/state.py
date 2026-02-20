@@ -1,9 +1,8 @@
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from jarvis.models import JarvisState
+from datetime import UTC, datetime, timedelta
+
 from jarvis.config import settings
+from jarvis.models import JarvisState
 from jarvis.observability.logger import get_logger
-from datetime import datetime, timezone, timedelta
 
 log = get_logger("state")
 
@@ -22,9 +21,9 @@ DEFAULT_LONG_GOALS = [
 ]
 
 # Short-term memory constraints
-STM_MAX_ENTRIES = 50           # Hard cap on number of entries
-STM_MAX_AGE_HOURS = 48         # Auto-expire entries older than this
-STM_MAX_CONTENT_LENGTH = 500   # Truncate individual entries
+STM_MAX_ENTRIES = 50  # Hard cap on number of entries
+STM_MAX_AGE_HOURS = 48  # Auto-expire entries older than this
+STM_MAX_CONTENT_LENGTH = 500  # Truncate individual entries
 
 
 class StateManager:
@@ -78,14 +77,14 @@ class StateManager:
                     state.current_goals = value
                 elif key == "iteration":
                     state.loop_iteration = value
-            state.last_heartbeat = datetime.now(timezone.utc)
+            state.last_heartbeat = datetime.now(UTC)
             await session.commit()
 
     async def heartbeat(self):
         async with self.session_factory() as session:
             state = await session.get(JarvisState, 1)
             if state:
-                state.last_heartbeat = datetime.now(timezone.utc)
+                state.last_heartbeat = datetime.now(UTC)
                 await session.commit()
 
     async def increment_iteration(self) -> int:
@@ -93,7 +92,7 @@ class StateManager:
             state = await session.get(JarvisState, 1)
             if state:
                 state.loop_iteration += 1
-                state.last_heartbeat = datetime.now(timezone.utc)
+                state.last_heartbeat = datetime.now(UTC)
                 await session.commit()
                 return state.loop_iteration
         return 0
@@ -118,34 +117,38 @@ class StateManager:
             if not state:
                 return
             current = list(state.short_term_memories or [])
-            now = datetime.now(timezone.utc).isoformat()
+            now = datetime.now(UTC).isoformat()
             for entry in entries:
                 content = entry[:STM_MAX_CONTENT_LENGTH]
-                current.append({
-                    "content": content,
-                    "created_at": now,
-                    "iteration": iteration,
-                })
+                current.append(
+                    {
+                        "content": content,
+                        "created_at": now,
+                        "iteration": iteration,
+                    }
+                )
             # Evict expired entries first
             current = self._evict_expired(current)
             # Then enforce hard cap (oldest first)
             if len(current) > STM_MAX_ENTRIES:
                 current = current[-STM_MAX_ENTRIES:]
             state.short_term_memories = current
-            state.last_heartbeat = datetime.now(timezone.utc)
+            state.last_heartbeat = datetime.now(UTC)
             await session.commit()
             log.info("stm_added", count=len(entries), total=len(current))
 
     async def replace_short_term_memories(self, entries: list[str], iteration: int = 0):
         """Replace all short-term memories (full overwrite by JARVIS)."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         memories = []
         for entry in entries[:STM_MAX_ENTRIES]:
-            memories.append({
-                "content": entry[:STM_MAX_CONTENT_LENGTH],
-                "created_at": now,
-                "iteration": iteration,
-            })
+            memories.append(
+                {
+                    "content": entry[:STM_MAX_CONTENT_LENGTH],
+                    "created_at": now,
+                    "iteration": iteration,
+                }
+            )
         await self.update(short_term_memories=memories)
         log.info("stm_replaced", count=len(memories))
 
@@ -161,7 +164,7 @@ class StateManager:
                 if 0 <= idx < len(current):
                     current.pop(idx)
             state.short_term_memories = current
-            state.last_heartbeat = datetime.now(timezone.utc)
+            state.last_heartbeat = datetime.now(UTC)
             await session.commit()
             log.info("stm_removed", removed=len(indices), remaining=len(current))
 
@@ -192,6 +195,6 @@ class StateManager:
     @staticmethod
     def _evict_expired(memories: list[dict]) -> list[dict]:
         """Remove entries older than STM_MAX_AGE_HOURS."""
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=STM_MAX_AGE_HOURS)
+        cutoff = datetime.now(UTC) - timedelta(hours=STM_MAX_AGE_HOURS)
         cutoff_iso = cutoff.isoformat()
         return [m for m in memories if m.get("created_at", "") >= cutoff_iso]

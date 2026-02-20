@@ -2,13 +2,12 @@ import asyncio
 import email
 import imaplib
 import socket
+from collections.abc import Callable
 from dataclasses import dataclass
 from email.header import decode_header
-from typing import Optional, Callable
 
 from jarvis.config import settings
 from jarvis.observability.logger import get_logger
-
 
 log = get_logger("email_listener")
 
@@ -27,7 +26,7 @@ class EmailMessage:
     body_text: str
 
 
-def _decode_mime_header(value: Optional[str]) -> str:
+def _decode_mime_header(value: str | None) -> str:
     if not value:
         return ""
     try:
@@ -81,13 +80,13 @@ class EmailInboxListener:
     def __init__(
         self,
         enqueue_fn: Callable[[str], object],
-        interval_seconds: Optional[int] = None,
+        interval_seconds: int | None = None,
     ):
         self._enqueue_fn = enqueue_fn
         self._interval = float(interval_seconds or settings.email_listener_interval_seconds)
         self._running = False
-        self._task: Optional[asyncio.Task] = None
-        self._disabled_reason: Optional[str] = None
+        self._task: asyncio.Task | None = None
+        self._disabled_reason: str | None = None
 
     def start(self):
         if self._task is not None:
@@ -129,7 +128,7 @@ class EmailInboxListener:
         return client
 
     def _fetch_unseen(self) -> list[EmailMessage]:
-        client: Optional[imaplib.IMAP4_SSL] = None
+        client: imaplib.IMAP4_SSL | None = None
         try:
             client = self._imap_connect()
             typ, data = client.uid("search", None, "UNSEEN")

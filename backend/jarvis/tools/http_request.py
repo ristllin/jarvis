@@ -3,10 +3,13 @@ HTTP Request tool — lets JARVIS make arbitrary HTTP requests.
 Essential for: interacting with APIs, checking service health,
 signing up for services, downloading data, testing endpoints.
 """
+
 import json
+
 import httpx
-from jarvis.tools.base import Tool, ToolResult
+
 from jarvis.observability.logger import get_logger
+from jarvis.tools.base import Tool, ToolResult
 
 log = get_logger("tools.http_request")
 
@@ -89,9 +92,7 @@ class HttpRequestTool(Tool):
                 )
 
                 success = 200 <= status < 400
-                log.info("http_request",
-                         method=method, url=url[:100],
-                         status=status, size=len(raw_body))
+                log.info("http_request", method=method, url=url[:100], status=status, size=len(raw_body))
 
                 return ToolResult(
                     success=success,

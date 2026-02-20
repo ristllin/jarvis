@@ -1,5 +1,5 @@
 import asyncio
-import subprocess
+
 from jarvis.tools.base import Tool, ToolResult
 
 
@@ -12,14 +12,18 @@ class CodeExecTool(Tool):
         try:
             if language == "python":
                 proc = await asyncio.create_subprocess_exec(
-                    "python", "-c", code,
+                    "python",
+                    "-c",
+                    code,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     cwd="/data/workspace",
                 )
             elif language in ("bash", "shell", "sh"):
                 proc = await asyncio.create_subprocess_exec(
-                    "bash", "-c", code,
+                    "bash",
+                    "-c",
+                    code,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     cwd="/data/workspace",
@@ -29,7 +33,7 @@ class CodeExecTool(Tool):
 
             try:
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=self.timeout_seconds)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 proc.kill()
                 return ToolResult(success=False, output="", error="Execution timed out")
 

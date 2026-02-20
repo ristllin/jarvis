@@ -2,17 +2,16 @@ import asyncio
 import json
 import traceback
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from jarvis.core.state import StateManager
-from jarvis.core.planner import Planner
-from jarvis.core.executor import Executor
+from datetime import UTC, datetime
+
 from jarvis.budget.tracker import BudgetTracker
+from jarvis.core.executor import Executor
+from jarvis.core.planner import Planner
+from jarvis.core.state import StateManager
 from jarvis.memory.blob import BlobStorage
-from jarvis.memory.vector import VectorMemory
 from jarvis.memory.models import MemoryEntry
-from jarvis.safety.validator import SafetyValidator
-from jarvis.config import settings
-from jarvis.observability.logger import get_logger, FileLogger
+from jarvis.memory.vector import VectorMemory
+from jarvis.observability.logger import FileLogger, get_logger
 
 log = get_logger("core_loop")
 
@@ -22,15 +21,21 @@ MAX_SLEEP_SECONDS = 3600
 DEFAULT_SLEEP_SECONDS = 30
 # When only tiny models available for reasoning, hibernate longer to avoid degradation
 HIBERNATE_WHEN_TINY_ONLY_SECONDS = 600  # 10 min — prefer waiting over tiny-model reasoning drift
-TINY_MODELS = frozenset({
-    "grok-3-mini", "gpt-4o-mini", "mistral-small-latest",
-    "mistral:7b-instruct", "triage-only",
-})
+TINY_MODELS = frozenset(
+    {
+        "grok-3-mini",
+        "gpt-4o-mini",
+        "mistral-small-latest",
+        "mistral:7b-instruct",
+        "triage-only",
+    }
+)
 
 
 @dataclass
 class PendingChat:
     """A chat message waiting to be processed by the main loop."""
+
     message: str
     response_event: asyncio.Event = field(default_factory=asyncio.Event)
     response_text: str = ""
@@ -91,7 +96,7 @@ class CoreLoop:
         try:
             await asyncio.wait_for(self._wake_event.wait(), timeout=seconds)
             log.info("sleep_interrupted", slept_less_than=seconds)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass  # Normal — full sleep completed
 
     def _build_results_summary(self, results: list[dict]) -> str:
@@ -152,8 +157,12 @@ class CoreLoop:
                 effective_max = 120 if has_free else MAX_SLEEP_SECONDS
                 sleep = max(MIN_SLEEP_SECONDS, min(effective_max, requested))
                 if sleep != requested:
-                    log.info("sleep_capped", requested=requested, actual=sleep,
-                             reason="free_providers_available" if has_free else "max_limit")
+                    log.info(
+                        "sleep_capped",
+                        requested=requested,
+                        actual=sleep,
+                        reason="free_providers_available" if has_free else "max_limit",
+                    )
                 else:
                     log.info("sleep_requested", requested=requested, actual=sleep)
                 return sleep
@@ -162,15 +171,18 @@ class CoreLoop:
 
         # 2. Budget exhausted + only tiny models + no actions → hibernate longer
         if remaining <= 5.0 and not has_free and is_tiny_model and not actions:
-            log.info("hibernate_tiny_only",
-                     model=model_used, remaining=remaining,
-                     reason="Only tiny models available; hibernating to avoid quality drift")
+            log.info(
+                "hibernate_tiny_only",
+                model=model_used,
+                remaining=remaining,
+                reason="Only tiny models available; hibernating to avoid quality drift",
+            )
             return HIBERNATE_WHEN_TINY_ONLY_SECONDS
 
         # 3. Budget-aware auto-throttle — but ONLY if no free providers exist
         if remaining <= 1.0 and not has_free:
             return MAX_SLEEP_SECONDS
-        elif remaining <= 1.0 and has_free:
+        if remaining <= 1.0 and has_free:
             return 60  # Free models available — stay active, just pace yourself
 
         # 4. If JARVIS had no actions, moderate sleep (not too long)
@@ -204,8 +216,7 @@ class CoreLoop:
                 iteration = await self.state.increment_iteration()
                 current_state["iteration"] = iteration
 
-                log.info("iteration_start", iteration=iteration,
-                         chat_messages=len(chat_messages))
+                log.info("iteration_start", iteration=iteration, chat_messages=len(chat_messages))
                 await self._broadcast_state("running", iteration=iteration)
 
                 # 2. Heartbeat
@@ -218,7 +229,9 @@ class CoreLoop:
                 tool_names = self.executor.tools.get_tool_names()
                 creator_messages = [c.message for c in chat_messages]
                 plan = await self.planner.plan(
-                    current_state, budget_status, tool_names,
+                    current_state,
+                    budget_status,
+                    tool_names,
                     creator_messages=creator_messages,
                 )
 
@@ -246,9 +259,7 @@ class CoreLoop:
                 if actions:
                     results = await self.executor.execute_plan(plan)
 
-                    await self._broadcast_state("executing",
-                                                actions_count=len(actions),
-                                                results_count=len(results))
+                    await self._broadcast_state("executing", actions_count=len(actions), results_count=len(results))
 
                 # 5b. Feed execution results back into working memory
                 # so JARVIS can see what happened on subsequent iterations
@@ -259,27 +270,33 @@ class CoreLoop:
                 # 6. Store results in long-term vector memory
                 for r in results:
                     if r.get("success") and r.get("output"):
-                        self.vector.add(MemoryEntry(
-                            content=f"[{r['tool']}] {r['output'][:500]}",
-                            importance_score=0.5,
-                            source=f"tool:{r['tool']}",
-                        ))
+                        self.vector.add(
+                            MemoryEntry(
+                                content=f"[{r['tool']}] {r['output'][:500]}",
+                                importance_score=0.5,
+                                source=f"tool:{r['tool']}",
+                            )
+                        )
                     elif not r.get("success") and r.get("error"):
-                        self.vector.add(MemoryEntry(
-                            content=f"[{r['tool']} FAILED] {r.get('error', '')[:300]}",
-                            importance_score=0.6,
-                            source=f"tool:{r['tool']}:error",
-                        ))
+                        self.vector.add(
+                            MemoryEntry(
+                                content=f"[{r['tool']} FAILED] {r.get('error', '')[:300]}",
+                                importance_score=0.6,
+                                source=f"tool:{r['tool']}:error",
+                            )
+                        )
 
                 # 7. Deliver chat reply back to waiting endpoints
                 if chat_messages:
                     action_summaries = []
                     for r in results:
-                        action_summaries.append({
-                            "tool": r.get("tool", ""),
-                            "success": r.get("success", False),
-                            "output": r.get("output", "")[:300],
-                        })
+                        action_summaries.append(
+                            {
+                                "tool": r.get("tool", ""),
+                                "success": r.get("success", False),
+                                "output": r.get("output", "")[:300],
+                            }
+                        )
                     if not chat_reply:
                         chat_reply = thinking[:2000] if thinking else status_msg
                     for pending in chat_messages:
@@ -291,16 +308,20 @@ class CoreLoop:
                         pending.response_event.set()
                     # Store conversation in long-term memory
                     for pending in chat_messages:
-                        self.vector.add(MemoryEntry(
-                            content=f"[creator_chat] Creator said: {pending.message[:300]}",
-                            importance_score=0.7,
-                            source="chat:creator",
-                        ))
-                    self.vector.add(MemoryEntry(
-                        content=f"[jarvis_chat_reply] I replied to creator: {chat_reply[:300]}",
-                        importance_score=0.6,
-                        source="chat:jarvis",
-                    ))
+                        self.vector.add(
+                            MemoryEntry(
+                                content=f"[creator_chat] Creator said: {pending.message[:300]}",
+                                importance_score=0.7,
+                                source="chat:creator",
+                            )
+                        )
+                    self.vector.add(
+                        MemoryEntry(
+                            content=f"[jarvis_chat_reply] I replied to creator: {chat_reply[:300]}",
+                            importance_score=0.6,
+                            source="chat:jarvis",
+                        )
+                    )
                     log.info("chat_replies_delivered", count=len(chat_messages))
 
                 # 8. Update goals if the plan suggests (supports tiered goals)
@@ -372,8 +393,7 @@ class CoreLoop:
                     self.vector.decay_importance(decay)
                     self.vector.prune_expired()
                     stm_evicted = await self.state.maintain_short_term_memories()
-                    log.info("maintenance_complete", iteration=iteration,
-                             stm_evicted=stm_evicted)
+                    log.info("maintenance_complete", iteration=iteration, stm_evicted=stm_evicted)
 
                 # 12. Compute how long to sleep
                 sleep_seconds = self._compute_sleep(plan, budget_status)
@@ -391,38 +411,40 @@ class CoreLoop:
                 )
 
                 budget_status = await self.budget.get_status()
-                await self._broadcast_state("idle",
-                                            iteration=iteration,
-                                            status_message=status_msg,
-                                            budget=budget_status,
-                                            next_wake_seconds=sleep_seconds,
-                                            triage_complexity=triage.get("complexity", ""),
-                                            triage_tier=triage.get("tier", ""),
-                                            model=plan.get("_response_model", ""))
+                await self._broadcast_state(
+                    "idle",
+                    iteration=iteration,
+                    status_message=status_msg,
+                    budget=budget_status,
+                    next_wake_seconds=sleep_seconds,
+                    triage_complexity=triage.get("complexity", ""),
+                    triage_tier=triage.get("tier", ""),
+                    model=plan.get("_response_model", ""),
+                )
 
-                log.info("iteration_complete",
-                         iteration=iteration,
-                         triage_complexity=triage.get("complexity"),
-                         triage_tier=triage.get("tier"),
-                         model=plan.get("_response_model"),
-                         actions=len(actions),
-                         chat_messages=len(chat_messages),
-                         budget_remaining=budget_status.get("remaining"),
-                         next_sleep=sleep_seconds)
+                log.info(
+                    "iteration_complete",
+                    iteration=iteration,
+                    triage_complexity=triage.get("complexity"),
+                    triage_tier=triage.get("tier"),
+                    model=plan.get("_response_model"),
+                    actions=len(actions),
+                    chat_messages=len(chat_messages),
+                    budget_remaining=budget_status.get("remaining"),
+                    next_sleep=sleep_seconds,
+                )
 
             except Exception as e:
-                log.error("iteration_error",
-                          error=str(e),
-                          traceback=traceback.format_exc())
+                log.error("iteration_error", error=str(e), traceback=traceback.format_exc())
                 self.blob.store(
                     event_type="error",
-                    content=f"Loop error: {str(e)}\n{traceback.format_exc()}",
+                    content=f"Loop error: {e!s}\n{traceback.format_exc()}",
                 )
                 await self._broadcast_state("error", error=str(e))
                 # Still deliver error responses to waiting chat clients
                 for pending in chat_messages:
                     if not pending.response_event.is_set():
-                        pending.response_text = f"I encountered an error during this iteration: {str(e)}"
+                        pending.response_text = f"I encountered an error during this iteration: {e!s}"
                         pending.response_event.set()
 
             # Sleep between iterations — interruptible by wake()
@@ -434,7 +456,7 @@ class CoreLoop:
             msg = {
                 "type": "state_update",
                 "status": status,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 **extra,
             }
             if asyncio.iscoroutinefunction(self.broadcast):

@@ -1,5 +1,5 @@
-from jarvis.llm.base import LLMProvider, LLMResponse
 from jarvis.config import settings
+from jarvis.llm.base import LLMProvider, LLMResponse
 from jarvis.observability.logger import get_logger
 
 log = get_logger("llm.anthropic")
@@ -14,6 +14,7 @@ class AnthropicProvider(LLMProvider):
     def _get_client(self):
         if self._client is None and settings.anthropic_api_key:
             import anthropic
+
             self._client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
         return self._client
 

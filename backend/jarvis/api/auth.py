@@ -1,8 +1,9 @@
 """Google OAuth authentication with email allowlist."""
 
-from fastapi import APIRouter, Request, HTTPException, Depends
-from fastapi.responses import RedirectResponse
 from authlib.integrations.starlette_client import OAuth
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import RedirectResponse
+
 from jarvis.config import settings
 from jarvis.observability.logger import get_logger
 

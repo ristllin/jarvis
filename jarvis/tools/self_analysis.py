@@ -3,9 +3,10 @@ Self-analysis tool — JARVIS can run diagnostics on its own capabilities.
 Reports: LLM provider availability, tool health, budget status, Grok connectivity.
 Useful for debugging "chat not responding" or "email not responding" issues.
 """
-from jarvis.tools.base import Tool, ToolResult
+
 from jarvis.config import settings
 from jarvis.observability.logger import get_logger
+from jarvis.tools.base import Tool, ToolResult
 
 log = get_logger("tools.self_analysis")
 
@@ -96,6 +97,7 @@ class SelfAnalysisTool(Tool):
             return "\n".join(lines)
         try:
             from jarvis.llm.providers.grok import GrokProvider
+
             provider = GrokProvider()
             if provider.is_available():
                 resp = await provider.complete(
@@ -107,7 +109,7 @@ class SelfAnalysisTool(Tool):
             else:
                 lines.append("- Connectivity: Provider reports not available\n")
         except Exception as e:
-            lines.append(f"- Connectivity: FAILED — {str(e)}\n")
+            lines.append(f"- Connectivity: FAILED — {e!s}\n")
         return "\n".join(lines)
 
     def _check_email(self) -> str:

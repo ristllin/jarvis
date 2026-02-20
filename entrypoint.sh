@@ -213,8 +213,16 @@ touch "$REVERT_FLAG"
 # ── 6. Start frontend (background) ────────────────────────────────────────
 echo "[entrypoint] Starting frontend..."
 cd /frontend
-npx vite --host 0.0.0.0 --port 3000 &
+nohup npx vite --host 0.0.0.0 --port 3000 > /tmp/vite.log 2>&1 &
 FRONTEND_PID=$!
+# Wait for Vite to bind (max 15s) — prevents 502 if backend starts before frontend is ready
+for i in $(seq 1 15); do
+  if curl -sf http://localhost:3000 > /dev/null 2>&1; then
+    echo "[entrypoint] Frontend ready"
+    break
+  fi
+  sleep 1
+done
 
 # ── 7. Start backend ──────────────────────────────────────────────────────
 echo "[entrypoint] Starting backend..."

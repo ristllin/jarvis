@@ -1,0 +1,86 @@
+[project]
+name = "jarvis"
+version = "0.1.1"
+requires-python = ">=3.11"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+src = ["jarvis", "tests"]
+exclude = ["backend/", "data/", ".venv/", "node_modules/"]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "N",      # pep8-naming
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "S",      # flake8-bandit (security)
+    "C4",     # flake8-comprehensions
+    "SIM",    # flake8-simplify
+    "PIE",    # flake8-pie
+    "RET",    # flake8-return
+    "C90",    # mccabe complexity
+    "PLR",    # pylint refactor
+    "PLC",    # pylint convention
+    "PLE",    # pylint error
+    "PERF",   # perflint
+    "RUF",    # ruff-specific
+]
+ignore = [
+    "E501",     # line too long — handled by formatter
+    "E701",     # multiple statements on one line — existing code style
+    "S101",     # assert in tests is fine
+    "S110",     # try-except-pass — used intentionally for optional cleanups
+    "S603",     # subprocess without shell=True — we do this intentionally
+    "S607",     # partial executable path — acceptable in Docker
+    "S608",     # hardcoded SQL — used with SQLAlchemy text() safely
+    "B008",     # function call in default arg — FastAPI Depends pattern
+    "RET504",   # unnecessary assignment before return — sometimes clearer
+    "PLR0913",  # too many arguments — some constructors genuinely need them
+    "PLR2004",  # magic value in comparison — too noisy
+    "PLC0415",  # import outside top-level — used for circular import avoidance
+    "PERF401",  # manual list comprehension — sometimes clearer as loop
+    "SIM105",   # contextlib.suppress — existing code uses try/except
+    "SIM108",   # ternary instead of if-else — sometimes less readable
+    "RUF005",   # iterable unpacking vs concat — minor style preference
+    "RUF006",   # asyncio dangling task — fire-and-forget is intentional here
+    "RUF012",   # mutable class default — false positive on SQLAlchemy models
+    "RUF013",   # implicit optional — existing code convention, fix over time
+    "RUF059",   # unused unpacked variable — used for readability in destructuring
+    "UP007",    # X | Y union syntax — keep Optional for clarity
+    "N818",     # exception name suffix — existing code doesn't follow this
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.pylint]
+max-args = 8
+max-branches = 15
+max-returns = 8
+max-statements = 60
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "PLR0915", "PLR0912"]
+"jarvis/safety/prompt_builder.py" = ["PLR0915"]
+# Existing complex files — refactor over time
+"jarvis/agents/coding.py" = ["C901", "PLR0912", "PLR0915", "PLR0911"]
+"jarvis/api/routes.py" = ["C901", "PLR0915"]
+"jarvis/core/loop.py" = ["C901", "PLR0912", "PLR0915"]
+"jarvis/core/planner.py" = ["PLR0915"]
+"jarvis/llm/router.py" = ["PLR0912"]
+"jarvis/main.py" = ["PLR0915"]
+"jarvis/tools/self_modify.py" = ["PLR0911"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = ["ignore::DeprecationWarning"]

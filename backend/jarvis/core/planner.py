@@ -1,9 +1,10 @@
 import json
+
 from jarvis.llm.router import LLMRouter
-from jarvis.memory.working import WorkingMemory
 from jarvis.memory.vector import VectorMemory
-from jarvis.safety.prompt_builder import build_system_prompt
+from jarvis.memory.working import WorkingMemory
 from jarvis.observability.logger import get_logger
+from jarvis.safety.prompt_builder import build_system_prompt
 
 log = get_logger("planner")
 
@@ -56,8 +57,9 @@ class Planner:
         self.vector = vector_memory
         self._consecutive_triage_only = 0  # Track triage-only iterations for forced escalation
 
-    async def plan(self, state: dict, budget_status: dict, tool_names: list[str],
-                   creator_messages: list[str] | None = None) -> dict:
+    async def plan(
+        self, state: dict, budget_status: dict, tool_names: list[str], creator_messages: list[str] | None = None
+    ) -> dict:
         """Generate a plan using two-phase triage.
 
         Phase 1: Cheap model assesses complexity and picks the right tier.
@@ -69,16 +71,17 @@ class Planner:
 
         # Phase 1: Triage (skip if chat — always escalate)
         if has_chat:
-            triage = {"complexity": "high", "tier": "level1",
-                      "reason": "creator chat", "needs_full_plan": True}
+            triage = {"complexity": "high", "tier": "level1", "reason": "creator chat", "needs_full_plan": True}
             log.info("triage_skipped", reason="creator_chat", tier="level1")
         else:
             triage = await self._triage(state, budget_status)
-            log.info("triage_result",
-                     complexity=triage.get("complexity"),
-                     tier=triage.get("tier"),
-                     needs_full_plan=triage.get("needs_full_plan"),
-                     reason=triage.get("reason", ""))
+            log.info(
+                "triage_result",
+                complexity=triage.get("complexity"),
+                tier=triage.get("tier"),
+                needs_full_plan=triage.get("needs_full_plan"),
+                reason=triage.get("reason", ""),
+            )
 
         # If triage says no full plan needed, check for forced escalation
         if not triage.get("needs_full_plan", True):
@@ -88,9 +91,11 @@ class Planner:
             # This ensures JARVIS periodically does a real self-assessment
             # and finds work to do rather than endlessly idling
             if self._consecutive_triage_only >= 5:
-                log.info("forced_escalation",
-                         consecutive_triage_only=self._consecutive_triage_only,
-                         reason="periodic self-assessment with free model")
+                log.info(
+                    "forced_escalation",
+                    consecutive_triage_only=self._consecutive_triage_only,
+                    reason="periodic self-assessment with free model",
+                )
                 self._consecutive_triage_only = 0
                 triage["complexity"] = "medium"
                 triage["tier"] = "level3"  # Use free model (Mistral Small) for the check
@@ -117,18 +122,17 @@ class Planner:
         # Phase 2: Full planning with the tier chosen by triage
         self._consecutive_triage_only = 0  # Reset — we're doing a real plan
         selected_tier = triage.get("tier", "level2")
-        return await self._full_plan(state, budget_status, tool_names,
-                                     creator_messages, selected_tier, triage)
+        return await self._full_plan(state, budget_status, tool_names, creator_messages, selected_tier, triage)
 
     async def _triage(self, state: dict, budget_status: dict) -> dict:
         """Phase 1: Quick assessment with a cheap model."""
-        pct_used = budget_status.get('percent_used', 0)
-        remaining = budget_status.get('remaining', 0)
-        iteration = state.get('iteration', 0)
+        pct_used = budget_status.get("percent_used", 0)
+        remaining = budget_status.get("remaining", 0)
+        iteration = state.get("iteration", 0)
 
         # Build a compact state summary for triage
-        short_goals = state.get('short_term_goals', state.get('goals', []))
-        active_task = state.get('active_task', 'None')
+        short_goals = state.get("short_term_goals", state.get("goals", []))
+        active_task = state.get("active_task", "None")
 
         triage_msg = (
             f"Iteration #{iteration}. "
@@ -155,8 +159,12 @@ class Planner:
             result = self._parse_plan(response.content)
             # Validate the result has expected fields
             if "complexity" not in result or "tier" not in result:
-                result = {"complexity": "medium", "tier": "level2",
-                          "needs_full_plan": True, "reason": "triage parse incomplete"}
+                result = {
+                    "complexity": "medium",
+                    "tier": "level2",
+                    "needs_full_plan": True,
+                    "reason": "triage parse incomplete",
+                }
             # Ensure tier is valid
             if result.get("tier") not in ("level1", "level2", "level3"):
                 result["tier"] = "level2"
@@ -164,13 +172,17 @@ class Planner:
         except Exception as e:
             log.warning("triage_failed", error=str(e))
             # On triage failure, default to medium — don't waste Opus on unknown
-            return {"complexity": "medium", "tier": "level2",
-                    "needs_full_plan": True, "reason": f"triage error: {e}"}
+            return {"complexity": "medium", "tier": "level2", "needs_full_plan": True, "reason": f"triage error: {e}"}
 
-    async def _full_plan(self, state: dict, budget_status: dict,
-                         tool_names: list[str],
-                         creator_messages: list[str] | None,
-                         tier: str, triage: dict) -> dict:
+    async def _full_plan(
+        self,
+        state: dict,
+        budget_status: dict,
+        tool_names: list[str],
+        creator_messages: list[str] | None,
+        tier: str,
+        triage: dict,
+    ) -> dict:
         """Phase 2: Full planning with the selected tier model."""
 
         # Build system prompt with tiered goals
@@ -209,7 +221,7 @@ class Planner:
                 )
 
         # Build iteration context message
-        pct_used = budget_status.get('percent_used', 0)
+        pct_used = budget_status.get("percent_used", 0)
         mem_cfg = self.working.memory_config
         stm_entries = state.get("short_term_memories", [])
 
@@ -230,7 +242,7 @@ class Planner:
             f"You can update goals at any tier using goals_update with keys: short_term, mid_term, long_term. "
             f"You can tune memory_config: retrieval_count (1-100), relevance_threshold (0-1), decay_factor (0.5-1). "
             f"Remember: you can use coding_agent for complex code changes and self_modify for git/deploy. "
-            f"For each action, you can specify \"tier\": \"level1\"|\"level2\"|\"level3\" to control "
+            f'For each action, you can specify "tier": "level1"|"level2"|"level3" to control '
             f"which model handles that tool (e.g. coding_agent with tier=level1 for hard tasks, level2 for simpler ones). "
             f"Set sleep_seconds to control when you wake next (10-3600). "
             f"Remember: Mistral, Devstral, and Ollama are FREE — use them to stay productive "
@@ -246,8 +258,8 @@ class Planner:
                 stm_block += f"  [{i}] {content}\n"
             stm_block += (
                 "\nYou can manage these with `short_term_memories_update` in your response. "
-                "Use `{\"add\": [...]}` to add notes, `{\"remove\": [0, 3]}` to remove by index, "
-                "or `{\"replace\": [...]}` to overwrite all. "
+                'Use `{"add": [...]}` to add notes, `{"remove": [0, 3]}` to remove by index, '
+                'or `{"replace": [...]}` to overwrite all. '
                 "Old entries auto-expire after 48h. Max 50 entries."
             )
             iteration_msg += stm_block
@@ -259,8 +271,10 @@ class Planner:
 
         # Inject creator chat messages
         if creator_messages:
-            chat_block = "\n\n🔔 **CREATOR CHAT — your creator is talking to you directly. " \
-                         "You MUST include a `chat_reply` field in your response.**\n"
+            chat_block = (
+                "\n\n🔔 **CREATOR CHAT — your creator is talking to you directly. "
+                "You MUST include a `chat_reply` field in your response.**\n"
+            )
             for i, msg in enumerate(creator_messages, 1):
                 chat_block += f"\nCreator message {i}: {msg}"
             chat_block += (
@@ -297,12 +311,14 @@ class Planner:
         # Track action signature for loop detection
         self._track_action_sig(plan)
 
-        log.info("plan_generated",
-                 tier=tier,
-                 model=response.model,
-                 actions=len(plan.get("actions", [])),
-                 has_chat_reply=bool(plan.get("chat_reply")),
-                 thinking=plan.get("thinking", "")[:100])
+        log.info(
+            "plan_generated",
+            tier=tier,
+            model=response.model,
+            actions=len(plan.get("actions", [])),
+            has_chat_reply=bool(plan.get("chat_reply")),
+            thinking=plan.get("thinking", "")[:100],
+        )
         return plan
 
     def _get_action_sig(self, plan: dict) -> str:
@@ -333,11 +349,10 @@ class Planner:
         if len(self._recent_action_sigs) < self._repeat_threshold:
             return None
 
-        recent = self._recent_action_sigs[-self._repeat_threshold:]
+        recent = self._recent_action_sigs[-self._repeat_threshold :]
         if len(set(recent)) == 1 and recent[0] != "no_actions":
             sig = recent[0]
-            log.warning("stuck_loop_detected", signature=sig,
-                        repeat_count=self._repeat_threshold)
+            log.warning("stuck_loop_detected", signature=sig, repeat_count=self._repeat_threshold)
             return (
                 f"You have produced the same action pattern ({sig}) for the last "
                 f"{self._repeat_threshold} iterations. You are stuck in a loop. "
@@ -375,7 +390,7 @@ class Planner:
             # Remove opening fence (```json or ```)
             first_newline = cleaned.find("\n")
             if first_newline > 0:
-                cleaned = cleaned[first_newline + 1:]
+                cleaned = cleaned[first_newline + 1 :]
             # Remove closing fence
             if cleaned.rstrip().endswith("```"):
                 cleaned = cleaned.rstrip()[:-3].rstrip()
@@ -440,7 +455,7 @@ class Planner:
             if inner.startswith("```"):
                 first_nl = inner.find("\n")
                 if first_nl > 0:
-                    inner = inner[first_nl + 1:]
+                    inner = inner[first_nl + 1 :]
                 if inner.rstrip().endswith("```"):
                     inner = inner.rstrip()[:-3].rstrip()
 
@@ -454,8 +469,7 @@ class Planner:
             if inner_plan and isinstance(inner_plan, dict):
                 # Merge: use inner plan but preserve outer metadata
                 if inner_plan.get("actions"):
-                    log.info("unwrapped_nested_plan",
-                             inner_actions=len(inner_plan.get("actions", [])))
+                    log.info("unwrapped_nested_plan", inner_actions=len(inner_plan.get("actions", [])))
                     return inner_plan
 
         return plan

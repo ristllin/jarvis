@@ -3,9 +3,11 @@ Environment Manager tool — lets JARVIS inspect and update its own
 environment variables and .env file. Essential for adding new API keys,
 configuring services, and self-management.
 """
+
 import os
-from jarvis.tools.base import Tool, ToolResult
+
 from jarvis.observability.logger import get_logger
+from jarvis.tools.base import Tool, ToolResult
 
 log = get_logger("tools.env_manager")
 
@@ -63,25 +65,39 @@ class EnvManagerTool(Tool):
 
         if action == "list":
             return self._list_env()
-        elif action == "get":
+        if action == "get":
             return self._get_env(key)
-        elif action == "set":
+        if action == "set":
             return self._set_env(key, value)
-        elif action == "delete":
+        if action == "delete":
             return self._delete_env(key)
-        else:
-            return ToolResult(
-                success=False, output="",
-                error=f"Unknown action: {action}. Use: list, get, set, delete",
-            )
+        return ToolResult(
+            success=False,
+            output="",
+            error=f"Unknown action: {action}. Use: list, get, set, delete",
+        )
 
     def _list_env(self) -> ToolResult:
         """List all relevant env vars (masks sensitive values)."""
         relevant = {}
         for k, v in sorted(os.environ.items()):
-            if k.startswith(("JARVIS", "GMAIL", "ANTHROPIC", "OPENAI", "MISTRAL",
-                            "TAVILY", "GITHUB", "SMTP", "EMAIL", "MONTHLY",
-                            "DATA_DIR", "OLLAMA", "GIT_")):
+            if k.startswith(
+                (
+                    "JARVIS",
+                    "GMAIL",
+                    "ANTHROPIC",
+                    "OPENAI",
+                    "MISTRAL",
+                    "TAVILY",
+                    "GITHUB",
+                    "SMTP",
+                    "EMAIL",
+                    "MONTHLY",
+                    "DATA_DIR",
+                    "OLLAMA",
+                    "GIT_",
+                )
+            ):
                 if k in PROTECTED_KEYS:
                     continue
                 relevant[k] = _mask(v) if _is_sensitive(k) else v

@@ -1,6 +1,7 @@
 import httpx
-from jarvis.llm.base import LLMProvider, LLMResponse
+
 from jarvis.config import settings
+from jarvis.llm.base import LLMProvider, LLMResponse
 from jarvis.observability.logger import get_logger
 
 log = get_logger("llm.ollama")

@@ -3,9 +3,11 @@ Grok/xAI LLM Provider — uses the OpenAI-compatible API at api.x.ai.
 Models: grok-4-1-fast-reasoning, grok-3-mini, grok-code-fast-1, etc.
 $25/month free credits + very cheap token pricing.
 """
+
 from openai import AsyncOpenAI
-from jarvis.llm.base import LLMProvider, LLMResponse
+
 from jarvis.config import settings
+from jarvis.llm.base import LLMProvider, LLMResponse
 from jarvis.observability.logger import get_logger
 
 log = get_logger("llm.grok")

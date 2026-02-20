@@ -1,8 +1,8 @@
 # Updated Gmail API Tool
 # This tool now uses environment variables for credentials instead of relying on gmail_credentials.json.
 
-import os
 from jarvis.config import settings
+
 
 class GmailApiTool:
     def __init__(self):
@@ -13,6 +13,8 @@ class GmailApiTool:
             # Perform authentication using the provided credentials
             pass
         else:
-            raise ValueError("Missing Gmail credentials. Please set 'gmail_address' and 'gmail_app_password' in the environment variables.")
+            raise ValueError(
+                "Missing Gmail credentials. Please set 'gmail_address' and 'gmail_app_password' in the environment variables."
+            )
 
     # Add other methods as needed for Gmail API functionality.

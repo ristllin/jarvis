@@ -1,5 +1,5 @@
-from jarvis.tools.base import Tool, ToolResult
 from jarvis.config import settings
+from jarvis.tools.base import Tool, ToolResult
 
 
 class WebSearchTool(Tool):
@@ -13,6 +13,7 @@ class WebSearchTool(Tool):
 
         try:
             from tavily import AsyncTavilyClient
+
             client = AsyncTavilyClient(api_key=settings.tavily_api_key)
             response = await client.search(query=query, max_results=max_results)
 

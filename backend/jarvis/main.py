@@ -1,30 +1,31 @@
 import asyncio
 import os
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
+from jarvis.api.auth import router as auth_router
+from jarvis.api.auth_middleware import AuthMiddleware
+from jarvis.api.routes import router as api_router
+from jarvis.api.websocket import ws_manager
+from jarvis.budget.tracker import BudgetTracker
 from jarvis.config import settings
-from jarvis.database import engine, async_session, Base
-from jarvis.observability.logger import setup_logging, get_logger, FileLogger
+from jarvis.core.email_listener import EmailInboxListener
+from jarvis.core.executor import Executor
+from jarvis.core.loop import CoreLoop
+from jarvis.core.planner import Planner
+from jarvis.core.state import StateManager
+from jarvis.core.watchdog import Watchdog
+from jarvis.database import Base, async_session, engine
+from jarvis.llm.router import LLMRouter
 from jarvis.memory.blob import BlobStorage
 from jarvis.memory.vector import VectorMemory
 from jarvis.memory.working import WorkingMemory
-from jarvis.budget.tracker import BudgetTracker
+from jarvis.observability.logger import FileLogger, get_logger, setup_logging
 from jarvis.safety.validator import SafetyValidator
 from jarvis.tools.registry import ToolRegistry
-from jarvis.llm.router import LLMRouter
-from jarvis.core.state import StateManager
-from jarvis.core.planner import Planner
-from jarvis.core.executor import Executor
-from jarvis.core.loop import CoreLoop
-from jarvis.core.email_listener import EmailInboxListener
-from jarvis.core.watchdog import Watchdog
-from jarvis.api.routes import router as api_router
-from jarvis.api.auth import router as auth_router
-from jarvis.api.auth_middleware import AuthMiddleware
-from jarvis.api.websocket import ws_manager
 
 setup_logging()
 log = get_logger("main")
@@ -51,9 +52,7 @@ async def lifespan(app: FastAPI):
             ("short_term_memories", "TEXT DEFAULT '[]'"),
         ]:
             try:
-                await conn.execute(
-                    __import__("sqlalchemy").text(f"ALTER TABLE jarvis_state ADD COLUMN {col} {coldef}")
-                )
+                await conn.execute(__import__("sqlalchemy").text(f"ALTER TABLE jarvis_state ADD COLUMN {col} {coldef}"))
                 log.info("column_added", table="jarvis_state", column=col)
             except Exception:
                 pass  # Column already exists
@@ -86,7 +85,9 @@ async def lifespan(app: FastAPI):
 
     validator = SafetyValidator()
     router = LLMRouter(budget, blob_storage=blob)
-    tools = ToolRegistry(vector, validator, budget_tracker=budget, llm_router=router, blob_storage=blob, working=working)
+    tools = ToolRegistry(
+        vector, validator, budget_tracker=budget, llm_router=router, blob_storage=blob, working=working
+    )
     log.info("tools_available", tools=sorted(tools.get_tool_names()))
     state_manager = StateManager(async_session)
     planner = Planner(router, working, vector)
@@ -96,19 +97,21 @@ async def lifespan(app: FastAPI):
     await _configure_git()
 
     # 4. Store in shared state for API access
-    app_state.update({
-        "blob": blob,
-        "vector": vector,
-        "working": working,
-        "budget": budget,
-        "tools": tools,
-        "router": router,
-        "state_manager": state_manager,
-        "planner": planner,
-        "executor": executor,
-        "file_logger": file_logger,
-        "session_factory": async_session,
-    })
+    app_state.update(
+        {
+            "blob": blob,
+            "vector": vector,
+            "working": working,
+            "budget": budget,
+            "tools": tools,
+            "router": router,
+            "state_manager": state_manager,
+            "planner": planner,
+            "executor": executor,
+            "file_logger": file_logger,
+            "session_factory": async_session,
+        }
+    )
 
     # 5. Try to pull a small Ollama model in the background
     ollama_provider = router.providers.get("ollama")

@@ -3,11 +3,12 @@ CoinGecko cryptocurrency tool — provides access to CoinGecko API for crypto da
 Features: get top cryptocurrencies, get coin data by ID, get price data and 24h changes.
 API docs: https://www.coingecko.com/api/documentation
 """
+
 import json
-from typing import Optional
+
+from jarvis.observability.logger import get_logger
 from jarvis.tools.base import Tool, ToolResult
 from jarvis.tools.http_request import HttpRequestTool
-from jarvis.observability.logger import get_logger
 
 log = get_logger("tools.coingecko")
 
@@ -37,7 +38,7 @@ class CoinGeckoTool(Tool):
     async def execute(
         self,
         action: str,
-        coin_id: Optional[str] = None,
+        coin_id: str | None = None,
         vs_currency: str = "usd",
         limit: int = 10,
         **kwargs,
@@ -74,9 +75,9 @@ class CoinGeckoTool(Tool):
         try:
             if action == "top":
                 return await self._get_top_cryptos(vs_currency, limit)
-            elif action == "coin_data":
+            if action == "coin_data":
                 return await self._get_coin_data(coin_id, vs_currency)
-            elif action == "price":
+            if action == "price":
                 return await self._get_price_data(coin_id, vs_currency)
         except Exception as e:
             log.error("coingecko_error", action=action, error=str(e))
@@ -132,12 +133,7 @@ class CoinGeckoTool(Tool):
                 price = coin.get("current_price", 0) or 0
                 mcap = coin.get("market_cap", 0) or 0
                 change = coin.get("price_change_percentage_24h", 0) or 0
-                lines.append(
-                    f"{i}. {name} ({symbol}): "
-                    f"${price:,.2f} | "
-                    f"MCap: ${mcap:,.0f} | "
-                    f"24h: {change:+.2f}%"
-                )
+                lines.append(f"{i}. {name} ({symbol}): ${price:,.2f} | MCap: ${mcap:,.0f} | 24h: {change:+.2f}%")
 
             header = f"Top {len(data)} Cryptocurrencies by Market Cap ({vs_currency.upper()})\n"
             return ToolResult(success=True, output=header + "\n".join(lines))
@@ -147,13 +143,7 @@ class CoinGeckoTool(Tool):
 
     async def _get_coin_data(self, coin_id: str, vs_currency: str) -> ToolResult:
         """Get detailed data for a specific coin."""
-        url = (
-            f"{BASE_URL}/coins/{coin_id}"
-            f"?localization=false"
-            f"&tickers=false"
-            f"&community_data=false"
-            f"&developer_data=false"
-        )
+        url = f"{BASE_URL}/coins/{coin_id}?localization=false&tickers=false&community_data=false&developer_data=false"
 
         result = await self._api_get(url)
         if not result.success:

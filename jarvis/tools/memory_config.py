@@ -1,7 +1,8 @@
 """Tool for JARVIS to view and update its own memory settings."""
-from jarvis.tools.base import Tool, ToolResult
+
 from jarvis.memory.working import WorkingMemory
 from jarvis.observability.logger import get_logger
+from jarvis.tools.base import Tool, ToolResult
 
 log = get_logger("tool.memory_config")
 
@@ -46,7 +47,7 @@ class MemoryConfigTool(Tool):
                 ]
                 return ToolResult(success=True, output="\n".join(lines))
 
-            elif action == "update":
+            if action == "update":
                 updates = {}
                 if retrieval_count is not None:
                     lo, hi = RANGES["retrieval_count"]
@@ -77,12 +78,11 @@ class MemoryConfigTool(Tool):
                     output=f"Updated: {updates}. Current config: {dict(self.working.memory_config)}",
                 )
 
-            else:
-                return ToolResult(
-                    success=False,
-                    output="",
-                    error=f"Unknown action: {action}. Use 'view' or 'update'.",
-                )
+            return ToolResult(
+                success=False,
+                output="",
+                error=f"Unknown action: {action}. Use 'view' or 'update'.",
+            )
 
         except Exception as e:
             log.error("memory_config_tool_error", error=str(e))

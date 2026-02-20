@@ -1,12 +1,12 @@
 from abc import ABC, abstractmethod
+
 from pydantic import BaseModel
-from typing import Any, Optional
 
 
 class ToolResult(BaseModel):
     success: bool
     output: str
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class Tool(ABC):

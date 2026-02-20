@@ -43,7 +43,9 @@ export function ControlBar({ status, onRefresh }: Props) {
             {status.current_model && (
               <>
                 <span className="text-gray-600">|</span>
-                <span className="text-xs text-gray-500 font-mono">{status.current_model}</span>
+                <span className="text-xs text-gray-500 font-mono">
+                  {(status as any).current_provider ? `${(status as any).current_provider}/` : ''}{status.current_model}
+                </span>
               </>
             )}
           </>

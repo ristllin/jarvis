@@ -1,7 +1,7 @@
 import pytest
-from jarvis.safety.rules import IMMUTABLE_RULES, ImmutableRules
-from jarvis.safety.validator import SafetyValidator
 from jarvis.safety.prompt_builder import build_system_prompt
+from jarvis.safety.rules import IMMUTABLE_RULES
+from jarvis.safety.validator import SafetyValidator
 
 
 class TestImmutableRules:
@@ -33,31 +33,38 @@ class TestSafetyValidator:
         self.validator = SafetyValidator()
 
     def test_safe_action_passes(self):
-        is_safe, reason = self.validator.validate_action({
-            "tool": "web_search",
-            "parameters": {"query": "python tutorials"},
-        })
+        is_safe, reason = self.validator.validate_action(
+            {
+                "tool": "web_search",
+                "parameters": {"query": "python tutorials"},
+            }
+        )
         assert is_safe
         assert reason == "OK"
 
     def test_unsafe_path_blocked(self):
-        is_safe, reason = self.validator.validate_action({
-            "tool": "file_write",
-            "parameters": {"path": "/etc/passwd", "content": "bad"},
-        })
+        is_safe, reason = self.validator.validate_action(
+            {
+                "tool": "file_write",
+                "parameters": {"path": "/etc/passwd", "content": "bad"},
+            }
+        )
         assert not is_safe
         assert "not allowed" in reason.lower() or "Path" in reason
 
     def test_code_leaking_secrets_blocked(self):
-        is_safe, reason = self.validator.validate_action({
-            "tool": "code_exec",
-            "parameters": {"code": "import os; print(os.environ['ANTHROPIC_API_KEY'])"},
-        })
+        is_safe, reason = self.validator.validate_action(
+            {
+                "tool": "code_exec",
+                "parameters": {"code": "import os; print(os.environ['ANTHROPIC_API_KEY'])"},
+            }
+        )
         assert not is_safe
         assert "secret" in reason.lower() or "leak" in reason.lower()
 
     def test_sanitize_output_redacts_keys(self):
         import os
+
         os.environ["ANTHROPIC_API_KEY"] = "sk-test-secret-key-12345"
         text = "The key is sk-test-secret-key-12345 found in config"
         sanitized = self.validator.sanitize_output(text)

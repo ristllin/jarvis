@@ -1,12 +1,19 @@
 import json
 import os
-from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
-from sqlalchemy import select, desc
+from datetime import UTC, datetime, timedelta
+
+from fastapi import APIRouter
+from sqlalchemy import desc, select
+
 from jarvis.api.schemas import (
-    DirectiveUpdate, MemoryMarkPermanent, BudgetOverride,
-    ChatRequest, ChatResponse, GoalsUpdate,
-    ProviderBalanceUpdate, AddProviderRequest,
+    AddProviderRequest,
+    BudgetOverride,
+    ChatRequest,
+    ChatResponse,
+    DirectiveUpdate,
+    GoalsUpdate,
+    MemoryMarkPermanent,
+    ProviderBalanceUpdate,
     ShortTermMemoryUpdate,
 )
 from jarvis.api.websocket import ws_manager
@@ -20,6 +27,7 @@ router = APIRouter(prefix="/api")
 def get_app_state():
     """Get shared app state — set during startup."""
     from jarvis.main import app_state
+
     return app_state
 
 
@@ -35,6 +43,8 @@ async def get_status():
             "min_sleep_seconds": 10,
             "max_sleep_seconds": 3600,
             "current_model": getattr(core_loop, "_current_model", "") or None,
+            "current_provider": getattr(core_loop, "_current_provider", "") or None,
+            "current_tier": getattr(core_loop, "_current_tier", "") or None,
         }
     return {
         "status": "running" if not current.get("is_paused") else "paused",
@@ -126,10 +136,6 @@ async def get_logs(limit: int = 50):
 
 
 @router.get("/tools")
-@router.get("/tools/monitor")
-async def get_monitor_tool_status():
-    state = get_app_state()
-    return await state["tools"].monitor_tool.check_tools()
 async def get_tools():
     state = get_app_state()
     return {"tools": state["tools"].get_tool_schemas()}
@@ -254,6 +260,7 @@ async def wake():
 async def override_budget(body: BudgetOverride):
     state = get_app_state()
     from jarvis.models import BudgetConfig
+
     async with state["session_factory"]() as session:
         config = await session.get(BudgetConfig, 1)
         if config:
@@ -262,17 +269,18 @@ async def override_budget(body: BudgetOverride):
     return {"ok": True, "new_cap": body.new_cap_usd}
 
 
-
 @router.get("/news")
 async def get_news():
     """Fetch news data from the news monitoring service."""
     from jarvis.tools.news_monitor import NewsMonitorTool
+
     news_tool = NewsMonitorTool()
     result = await news_tool.execute(query="latest news", max_results=5)
     return {"news": result.output}
 
 
 # ── Provider balance management ───────────────────────────────────────────
+
 
 @router.get("/providers")
 async def get_providers():
@@ -298,7 +306,9 @@ async def update_provider(provider: str, body: ProviderBalanceUpdate):
     # Handle API key update separately — write to .env and live config
     if body.api_key:
         import os
+
         from jarvis.config import settings
+
         key_attr = f"{provider}_api_key"
         if hasattr(settings, key_attr):
             setattr(settings, key_attr, body.api_key)
@@ -314,11 +324,10 @@ async def update_provider(provider: str, body: ProviderBalanceUpdate):
 
 def _update_env_file(path: str, key: str, value: str):
     """Update or add an env var in a .env file."""
-    import os
     lines = []
     found = False
     if os.path.exists(path):
-        with open(path, 'r') as f:
+        with open(path) as f:
             for line in f:
                 if line.strip().startswith(f"{key}="):
                     lines.append(f"{key}={value}\n")
@@ -327,7 +336,7 @@ def _update_env_file(path: str, key: str, value: str):
                     lines.append(line)
     if not found:
         lines.append(f"{key}={value}\n")
-    with open(path, 'w') as f:
+    with open(path, "w") as f:
         f.writelines(lines)
 
 
@@ -347,6 +356,7 @@ async def add_provider(body: AddProviderRequest):
 
 
 # ── Chat endpoint ──────────────────────────────────────────────────────────
+
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(body: ChatRequest):
@@ -370,6 +380,7 @@ async def chat(body: ChatRequest):
         metadata={"role": "creator"},
     )
     from jarvis.models import ChatMessage
+
     async with state["session_factory"]() as session:
         msg = ChatMessage(role="creator", content=body.message)
         session.add(msg)
@@ -388,10 +399,10 @@ async def chat(body: ChatRequest):
     # Timeout after 120 seconds (iterations with tool use can take a while)
     try:
         await asyncio.wait_for(pending.response_event.wait(), timeout=120.0)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return ChatResponse(
             reply="I'm still processing your message — the current iteration is taking longer than expected. "
-                  "Check the dashboard for my response.",
+            "Check the dashboard for my response.",
             agentic=True,
         )
 
@@ -413,12 +424,14 @@ async def chat(body: ChatRequest):
         await session.commit()
 
     # Broadcast chat event via WebSocket
-    await ws_manager.broadcast({
-        "type": "chat_message",
-        "role": "jarvis",
-        "content": reply_text[:200],
-        "agentic": True,
-    })
+    await ws_manager.broadcast(
+        {
+            "type": "chat_message",
+            "role": "jarvis",
+            "content": reply_text[:200],
+            "agentic": True,
+        }
+    )
 
     return ChatResponse(
         reply=reply_text,
@@ -441,10 +454,9 @@ async def get_chat_history(limit: int = 50):
 async def _get_chat_history(session_factory, limit: int = 50) -> list[dict]:
     """Retrieve recent chat messages from DB."""
     from jarvis.models import ChatMessage
+
     async with session_factory() as session:
-        result = await session.execute(
-            select(ChatMessage).order_by(desc(ChatMessage.id)).limit(limit)
-        )
+        result = await session.execute(select(ChatMessage).order_by(desc(ChatMessage.id)).limit(limit))
         messages = result.scalars().all()
         return [
             {
@@ -463,11 +475,14 @@ async def get_history(limit: int = 20):
     """Return recent repo change history from blob storage."""
     state = get_app_state()
     entries = state["blob"].read_recent(limit=200)
-    git_entries = [e for e in entries if "git" in e.get("content", "").lower() or e.get("metadata", {}).get("tool") == "git"]
+    git_entries = [
+        e for e in entries if "git" in e.get("content", "").lower() or e.get("metadata", {}).get("tool") == "git"
+    ]
     return {"history": git_entries[:limit]}
 
 
 # ── Analytics ──────────────────────────────────────────────────────────
+
 
 @router.get("/analytics")
 async def get_analytics(range: str = "24h"):
@@ -483,14 +498,14 @@ async def get_analytics(range: str = "24h"):
 
     # Parse range into timedelta and bucket size
     range_map = {
-        "1h":  (timedelta(hours=1),   "5 minutes",  300),
-        "6h":  (timedelta(hours=6),   "30 minutes", 1800),
-        "24h": (timedelta(hours=24),  "1 hour",     3600),
-        "7d":  (timedelta(days=7),    "6 hours",    21600),
-        "30d": (timedelta(days=30),   "1 day",      86400),
+        "1h": (timedelta(hours=1), "5 minutes", 300),
+        "6h": (timedelta(hours=6), "30 minutes", 1800),
+        "24h": (timedelta(hours=24), "1 hour", 3600),
+        "7d": (timedelta(days=7), "6 hours", 21600),
+        "30d": (timedelta(days=30), "1 day", 86400),
     }
     delta, bucket_label, bucket_secs = range_map.get(range, range_map["24h"])
-    since = datetime.now(timezone.utc) - delta
+    since = datetime.now(UTC) - delta
     # SQLite stores timestamps without timezone — use compatible format
     since_str = since.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -525,7 +540,7 @@ async def get_analytics(range: str = "24h"):
         tool_data = tool_rows.fetchall()
 
     # Build time buckets
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     buckets = {}
     t = since
     while t <= now:
@@ -555,11 +570,11 @@ async def get_analytics(range: str = "24h"):
                 except ValueError:
                     ts = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
                 if ts.tzinfo is None:
-                    ts = ts.replace(tzinfo=timezone.utc)
+                    ts = ts.replace(tzinfo=UTC)
             else:
                 ts = ts_str
                 if ts.tzinfo is None:
-                    ts = ts.replace(tzinfo=timezone.utc)
+                    ts = ts.replace(tzinfo=UTC)
             # Find the bucket start
             elapsed = (ts - since).total_seconds()
             if elapsed < 0:
@@ -620,15 +635,17 @@ async def get_analytics(range: str = "24h"):
     # Simplify series for the chart (remove nested dicts)
     chart_series = []
     for b in series:
-        chart_series.append({
-            "time": b["time"],
-            "cost": round(b["cost"], 6),
-            "input_tokens": b["input_tokens"],
-            "output_tokens": b["output_tokens"],
-            "llm_calls": b["llm_calls"],
-            "tool_calls": b["tool_calls"],
-            "tool_errors": b["tool_errors"],
-        })
+        chart_series.append(
+            {
+                "time": b["time"],
+                "cost": round(b["cost"], 6),
+                "input_tokens": b["input_tokens"],
+                "output_tokens": b["output_tokens"],
+                "llm_calls": b["llm_calls"],
+                "tool_calls": b["tool_calls"],
+                "tool_errors": b["tool_errors"],
+            }
+        )
 
     return {
         "range": range,
@@ -664,7 +681,7 @@ async def get_tool_status():
     tool_names = tools_registry.get_tool_names()
 
     # Query recent usage stats per tool from tool_usage_log
-    since_str = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+    since_str = (datetime.now(UTC) - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
 
     async with session_factory() as session:
         rows = await session.execute(
@@ -700,19 +717,24 @@ async def get_tool_status():
     tools_status = []
     for schema in tool_schemas:
         name = schema["name"]
-        usage = usage_map.get(name, {
-            "total_calls_24h": 0,
-            "successful_24h": 0,
-            "failed_24h": 0,
-            "avg_duration_ms": None,
-            "last_used": None,
-        })
-        tools_status.append({
-            "name": name,
-            "description": schema.get("description", ""),
-            "registered": True,
-            **usage,
-        })
+        usage = usage_map.get(
+            name,
+            {
+                "total_calls_24h": 0,
+                "successful_24h": 0,
+                "failed_24h": 0,
+                "avg_duration_ms": None,
+                "last_used": None,
+            },
+        )
+        tools_status.append(
+            {
+                "name": name,
+                "description": schema.get("description", ""),
+                "registered": True,
+                **usage,
+            }
+        )
 
     return {
         "total_tools": len(tool_names),
@@ -720,6 +742,51 @@ async def get_tool_status():
     }
 
 
+@router.get("/iteration-history")
+async def get_iteration_history(limit: int = 20):
+    """Return recent iteration plans from blob storage for the debug panel."""
+    state = get_app_state()
+    blob = state["blob"]
+    entries = blob.read_filtered(event_type="plan", limit=limit)
+    iterations = []
+    for entry in entries:
+        content = entry.get("content", "")
+        metadata = entry.get("metadata", {})
+        try:
+            plan_data = json.loads(content) if isinstance(content, str) else content
+        except (json.JSONDecodeError, TypeError):
+            plan_data = {}
+
+        actions = plan_data.get("actions", [])
+        action_details = []
+        for a in actions:
+            action_details.append(
+                {
+                    "tool": a.get("tool", "?"),
+                    "tier": a.get("tier", "default"),
+                    "parameters_keys": list(a.get("parameters", {}).keys()),
+                }
+            )
+
+        iterations.append(
+            {
+                "timestamp": entry.get("timestamp", ""),
+                "iteration": metadata.get("iteration"),
+                "model": metadata.get("model", plan_data.get("_response_model", "")),
+                "provider": metadata.get("provider", plan_data.get("_response_provider", "")),
+                "tokens": metadata.get("tokens", plan_data.get("_response_tokens", 0)),
+                "thinking": plan_data.get("thinking", "")[:500],
+                "status_message": plan_data.get("status_message", ""),
+                "chat_reply": plan_data.get("chat_reply", "")[:300] if plan_data.get("chat_reply") else None,
+                "sleep_seconds": plan_data.get("sleep_seconds"),
+                "action_count": len(actions),
+                "actions": action_details,
+            }
+        )
+
+    return {"iterations": iterations}
+
+
 @router.get("/health")
 async def health():
-    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+    return {"status": "ok", "timestamp": datetime.now(UTC).isoformat()}

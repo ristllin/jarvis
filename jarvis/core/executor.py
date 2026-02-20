@@ -1,7 +1,8 @@
 import time
-from jarvis.tools.registry import ToolRegistry
+
 from jarvis.memory.blob import BlobStorage
-from jarvis.observability.logger import get_logger, FileLogger
+from jarvis.observability.logger import FileLogger, get_logger
+from jarvis.tools.registry import ToolRegistry
 
 log = get_logger("executor")
 
@@ -9,23 +10,30 @@ log = get_logger("executor")
 class Executor:
     """Executes planned actions using the tool system."""
 
-    def __init__(self, tools: ToolRegistry, blob: BlobStorage, file_logger: FileLogger,
-                 session_factory=None):
+    def __init__(self, tools: ToolRegistry, blob: BlobStorage, file_logger: FileLogger, session_factory=None):
         self.tools = tools
         self.blob = blob
         self.file_logger = file_logger
         self.session_factory = session_factory
 
     async def execute_plan(self, plan: dict) -> list[dict]:
-        """Execute all actions in a plan and return results."""
+        """Execute all actions in a plan and return results.
+
+        Each action may include a 'tier' field assigned by the planner,
+        which is passed through to tools that internally use LLM routing.
+        """
         actions = plan.get("actions", [])
         results = []
 
         for i, action in enumerate(actions):
             tool_name = action.get("tool", "")
             parameters = action.get("parameters", {})
+            action_tier = action.get("tier")
 
-            log.info("executing_action", index=i, tool=tool_name, params=list(parameters.keys()))
+            if action_tier and "tier" not in parameters:
+                parameters["tier"] = action_tier
+
+            log.info("executing_action", index=i, tool=tool_name, tier=action_tier, params=list(parameters.keys()))
 
             t0 = time.monotonic()
             result = await self.tools.execute(tool_name, parameters)
@@ -50,9 +58,12 @@ class Executor:
 
             # Log to ToolUsageLog DB table for analytics
             await self._log_tool_usage(
-                tool_name, parameters, result.success,
+                tool_name,
+                parameters,
+                result.success,
                 result.output[:500] if result.output else "",
-                result.error, duration_ms,
+                result.error,
+                duration_ms,
             )
 
             # File log
@@ -69,14 +80,15 @@ class Executor:
 
         return results
 
-    async def _log_tool_usage(self, tool_name: str, parameters: dict,
-                               success: bool, summary: str, error: str | None,
-                               duration_ms: int):
+    async def _log_tool_usage(
+        self, tool_name: str, parameters: dict, success: bool, summary: str, error: str | None, duration_ms: int
+    ):
         """Persist tool usage to DB for analytics."""
         if not self.session_factory:
             return
         try:
             from jarvis.models import ToolUsageLog
+
             async with self.session_factory() as session:
                 entry = ToolUsageLog(
                     tool_name=tool_name,

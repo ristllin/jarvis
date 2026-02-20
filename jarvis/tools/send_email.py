@@ -24,16 +24,10 @@ class SendEmailTool(Tool):
             "required": ["subject", "body", "to_email"],
         }
 
-<<<<<<< HEAD
     def _get_smtp_config(self) -> dict:
         """Resolve SMTP configuration from settings with sensible fallbacks."""
-        # Resolve username: smtp_username -> gmail_address
         username = settings.smtp_username or settings.gmail_address
-
-        # Resolve password: smtp_password -> gmail_app_password
         password = settings.smtp_password or settings.gmail_app_password
-
-        # Resolve from address: smtp_from_address -> smtp_username -> gmail_address
         from_address = settings.smtp_from_address or username
 
         return {
@@ -45,88 +39,51 @@ class SendEmailTool(Tool):
             "from_address": from_address,
         }
 
-    async def execute(self, subject: str = "", body: str = "", to_email: str = "", to: str = "", **kwargs) -> ToolResult:
-=======
-    async def execute(self, subject: str = "", body: str = "", to_email: str = "",
-                      to: str = "", **kwargs) -> ToolResult:
->>>>>>> 017397903736fca09b141b64e7932ee73f41044a
-        # Accept both "to" and "to_email" (LLMs use different names)
+    async def execute(
+        self, subject: str = "", body: str = "", to_email: str = "", to: str = "", **kwargs
+    ) -> ToolResult:
         recipient = to_email or to or kwargs.get("recipient", "")
         if not recipient:
-            return ToolResult(success=False, output="",
-                              error="Missing recipient \u2014 provide 'to_email' or 'to' parameter")
+            return ToolResult(
+                success=False, output="", error="Missing recipient — provide 'to_email' or 'to' parameter"
+            )
         if not subject:
             return ToolResult(success=False, output="", error="Missing 'subject' parameter")
         if not body:
             return ToolResult(success=False, output="", error="Missing 'body' parameter")
 
-<<<<<<< HEAD
         smtp_cfg = self._get_smtp_config()
 
-        # Validate we have credentials
         if not smtp_cfg["username"]:
             return ToolResult(
-                success=False, output="",
-                error="No SMTP username configured. Set SMTP_USERNAME or GMAIL_ADDRESS environment variable."
+                success=False,
+                output="",
+                error="No SMTP username configured. Set SMTP_USERNAME or GMAIL_ADDRESS environment variable.",
             )
         if not smtp_cfg["password"]:
             return ToolResult(
-                success=False, output="",
+                success=False,
+                output="",
                 error="No SMTP password configured. Set SMTP_PASSWORD or GMAIL_APP_PASSWORD environment variable. "
-                      "For Gmail, generate an App Password at https://myaccount.google.com/apppasswords"
+                "For Gmail, generate an App Password at https://myaccount.google.com/apppasswords",
             )
 
-        # Build the email message
         msg = MIMEMultipart()
         msg["From"] = smtp_cfg["from_address"]
         msg["To"] = recipient
         msg["Subject"] = subject
         msg.attach(MIMEText(body, "plain"))
-=======
-        # Prefer explicit SMTP settings; fall back to Gmail App Password
-        username = settings.smtp_username or settings.gmail_address
-        password = settings.smtp_password or settings.gmail_app_password
-        from_addr = settings.smtp_from_address or username
 
-        if not username or not password or not from_addr:
+        try:
+            result = await asyncio.get_event_loop().run_in_executor(None, self._send_smtp, smtp_cfg, recipient, msg)
+            return result
+        except Exception as e:
             return ToolResult(
                 success=False,
                 output="",
-                error=(
-                    "SMTP credentials must be set in configuration. Set smtp_username, smtp_password "
-                    "(and optionally smtp_from_address). For legacy support you can set gmail_address/gmail_password."
-                ),
+                error=f"Failed to send email: {e}. Check SMTP server ({smtp_cfg['host']}:{smtp_cfg['port']}), "
+                f"network connection, and credentials.",
             )
-
-        msg = MIMEMultipart()
-        msg["From"] = from_addr
-        msg["To"] = recipient
-        msg["Subject"] = subject
-        msg.attach(MIMEText(body, "plain"))
-
-        def _send() -> None:
-            server = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=self.timeout_seconds)
-            try:
-                if settings.smtp_use_starttls:
-                    server.starttls()
-                server.login(username, password)
-                server.sendmail(from_addr, recipient, msg.as_string())
-            finally:
-                try:
-                    server.quit()
-                except Exception:
-                    pass
->>>>>>> 017397903736fca09b141b64e7932ee73f41044a
-
-        # Send via SMTP in a thread to avoid blocking the event loop
-        try:
-<<<<<<< HEAD
-            result = await asyncio.get_event_loop().run_in_executor(
-                None, self._send_smtp, smtp_cfg, recipient, msg
-            )
-            return result
-        except Exception as e:
-            return ToolResult(success=False, output="", error=f"Failed to send email: {e}. Troubleshooting: Check SMTP server ({smtp_cfg['host']}:{smtp_cfg['port']}), network connection, and credentials. For Gmail, ensure 'Less secure apps' is enabled or use an App Password.")
 
     def _send_smtp(self, smtp_cfg: dict, recipient: str, msg: MIMEMultipart) -> ToolResult:
         """Synchronous SMTP send (runs in executor thread)."""
@@ -141,17 +98,12 @@ class SendEmailTool(Tool):
             return ToolResult(success=True, output=f"Email sent to {recipient}", error=None)
         except smtplib.SMTPAuthenticationError as e:
             return ToolResult(
-                success=False, output="",
+                success=False,
+                output="",
                 error=f"SMTP authentication failed: {e}. "
-                      f"For Gmail, ensure you're using an App Password "
-                      f"(https://myaccount.google.com/apppasswords) "
-                      f"and that 2-Step Verification is enabled."
+                f"For Gmail, ensure you're using an App Password "
+                f"(https://myaccount.google.com/apppasswords) "
+                f"and that 2-Step Verification is enabled.",
             )
         except smtplib.SMTPException as e:
             return ToolResult(success=False, output="", error=f"SMTP error: {e}")
-=======
-            await asyncio.to_thread(_send)
-            return ToolResult(success=True, output=f"Email sent to {recipient}", error=None)
->>>>>>> 017397903736fca09b141b64e7932ee73f41044a
-        except Exception as e:
-            return ToolResult(success=False, output="", error=f"Failed to send email: {e}")

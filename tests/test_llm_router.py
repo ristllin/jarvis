@@ -1,9 +1,10 @@
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 import pytest_asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
-from jarvis.llm.router import LLMRouter, DEFAULT_TIERS
-from jarvis.llm.base import LLMResponse
 from jarvis.budget.tracker import BudgetTracker
+from jarvis.llm.base import LLMResponse
+from jarvis.llm.router import DEFAULT_TIERS, LLMRouter
 
 
 @pytest.mark.asyncio
@@ -24,7 +25,7 @@ class TestLLMRouter:
         router = LLMRouter(budget)
         info = router.get_tier_info()
         assert "level1" in info
-        for tier_name, models in info.items():
+        for models in info.values():
             for m in models:
                 assert "provider" in m
                 assert "model" in m

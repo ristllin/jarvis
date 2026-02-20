@@ -14,12 +14,12 @@ Supports:
   - Planning mode (generate a plan for main agent approval)
   - Full execution mode (plan + execute)
 """
+
+import asyncio
+import json
 import os
 import re
-import json
-import asyncio
-import subprocess
-from datetime import datetime, timezone
+
 from jarvis.observability.logger import get_logger
 
 log = get_logger("coding_agent")
@@ -147,9 +147,11 @@ class CodingAgent:
                 event_type="coding_agent_start",
                 content=f"Task: {task}",
                 metadata={
-                    "tier": tier, "max_turns": max_turns,
+                    "tier": tier,
+                    "max_turns": max_turns,
                     "working_directory": working_directory,
-                    "skills": skills or [], "plan_only": plan_only,
+                    "skills": skills or [],
+                    "plan_only": plan_only,
                 },
             )
 
@@ -179,12 +181,17 @@ class CodingAgent:
             # Resume from previous session — inject continuation context
             messages = [{"role": "system", "content": sys_prompt}]
             messages.extend(continuation_context[-20:])  # Last 20 messages for context
-            messages.append({"role": "user", "content": (
-                f"## Continuation\n"
-                f"You were working on this task but ran out of turns. Continue where you left off.\n\n"
-                f"Original task: {task}\n\n"
-                f"Pick up from where you stopped. Review what's already done and continue."
-            )})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        f"## Continuation\n"
+                        f"You were working on this task but ran out of turns. Continue where you left off.\n\n"
+                        f"Original task: {task}\n\n"
+                        f"Pick up from where you stopped. Review what's already done and continue."
+                    ),
+                }
+            )
             log.info("coding_agent_continuing", context_messages=len(continuation_context))
         else:
             messages = [
@@ -211,13 +218,20 @@ class CodingAgent:
                 content = response.content or ""
                 if not content.strip():
                     messages.append({"role": "assistant", "content": "(empty response)"})
-                    messages.append({"role": "user", "content": "Your response was empty. Please respond with a JSON action. Use 'done' if you're finished."})
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": "Your response was empty. Please respond with a JSON action. Use 'done' if you're finished.",
+                        }
+                    )
                     continue
 
                 action = self._parse_action(content)
                 if not action:
                     messages.append({"role": "assistant", "content": content})
-                    messages.append({"role": "user", "content": "Please respond with a JSON action. Use 'done' if you're finished."})
+                    messages.append(
+                        {"role": "user", "content": "Please respond with a JSON action. Use 'done' if you're finished."}
+                    )
                     continue
 
                 action_name = action.get("action", "")
@@ -248,7 +262,11 @@ class CodingAgent:
                         self.blob.store(
                             event_type="coding_agent_done",
                             content=f"Summary: {summary}\nTurns: {turn + 1}\nFiles modified: {list(files_modified)}",
-                            metadata={"turns": turn + 1, "files_modified": list(files_modified), "changes": len(changes_made)},
+                            metadata={
+                                "turns": turn + 1,
+                                "files_modified": list(files_modified),
+                                "changes": len(changes_made),
+                            },
                         )
                     return {
                         "success": True,
@@ -278,18 +296,16 @@ class CodingAgent:
                     messages = messages[:1] + messages[-40:]
 
                 # Sanitize: ensure no empty assistant messages (Mistral rejects them)
-                messages = [
-                    m if m.get("content") else {**m, "content": "(continued)"}
-                    for m in messages
-                ]
+                messages = [m if m.get("content") else {**m, "content": "(continued)"} for m in messages]
 
             except Exception as e:
                 log.error("coding_agent_error", turn=turn, error=str(e))
-                messages.append({"role": "user", "content": f"Error occurred: {str(e)}\nPlease continue or use 'done' if finished."})
+                messages.append(
+                    {"role": "user", "content": f"Error occurred: {e!s}\nPlease continue or use 'done' if finished."}
+                )
 
         # Hit max turns — provide continuation context for resuming
-        log.warning("coding_agent_max_turns", max_turns=max_turns,
-                     files_modified=list(files_modified))
+        log.warning("coding_agent_max_turns", max_turns=max_turns, files_modified=list(files_modified))
         return {
             "success": False,
             "summary": (
@@ -305,8 +321,9 @@ class CodingAgent:
             "can_continue": True,
         }
 
-    def _build_system_prompt(self, custom_prompt: str = None, working_directory: str = "/app",
-                             skills: list[str] = None) -> str:
+    def _build_system_prompt(
+        self, custom_prompt: str = None, working_directory: str = "/app", skills: list[str] = None
+    ) -> str:
         parts = []
         parts.append("You are a coding agent — a skilled software engineer subagent of JARVIS.")
         parts.append(f"Working directory: {working_directory}")
@@ -314,7 +331,8 @@ class CodingAgent:
 
         # Load skills into context
         if skills:
-            from jarvis.tools.skills import read_skill, list_skills
+            from jarvis.tools.skills import read_skill
+
             parts.append("## Loaded Skills\n")
             for skill_name in skills:
                 content = read_skill(skill_name)
@@ -345,7 +363,7 @@ class CodingAgent:
         except json.JSONDecodeError:
             pass
         try:
-            match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', content, re.DOTALL)
+            match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", content, re.DOTALL)
             if match:
                 return json.loads(match.group(1))
         except (json.JSONDecodeError, AttributeError):
@@ -367,30 +385,35 @@ class CodingAgent:
         try:
             if name == "read_file":
                 return self._prim_read_file(action.get("path", ""), action.get("offset"), action.get("limit"))
-            elif name == "write_file":
+            if name == "write_file":
                 return self._prim_write_file(action.get("path", ""), action.get("content", ""))
-            elif name == "str_replace":
-                return self._prim_str_replace(action.get("path", ""), action.get("old_string", ""), action.get("new_string", ""))
-            elif name == "insert_after":
-                return self._prim_insert_after(action.get("path", ""), action.get("after", ""), action.get("content", ""))
-            elif name == "grep":
-                return await self._prim_grep(action.get("pattern", ""), action.get("path", working_dir), action.get("glob"))
-            elif name == "list_dir":
+            if name == "str_replace":
+                return self._prim_str_replace(
+                    action.get("path", ""), action.get("old_string", ""), action.get("new_string", "")
+                )
+            if name == "insert_after":
+                return self._prim_insert_after(
+                    action.get("path", ""), action.get("after", ""), action.get("content", "")
+                )
+            if name == "grep":
+                return await self._prim_grep(
+                    action.get("pattern", ""), action.get("path", working_dir), action.get("glob")
+                )
+            if name == "list_dir":
                 return self._prim_list_dir(action.get("path", working_dir))
-            elif name == "shell":
+            if name == "shell":
                 return await self._prim_shell(action.get("command", ""), working_dir)
-            elif name == "delete_file":
+            if name == "delete_file":
                 return self._prim_delete_file(action.get("path", ""))
-            elif name == "load_skill":
+            if name == "load_skill":
                 return self._prim_load_skill(action.get("name", ""))
-            elif name == "list_skills":
+            if name == "list_skills":
                 return self._prim_list_skills()
-            elif name == "write_skill":
+            if name == "write_skill":
                 return self._prim_write_skill(action.get("name", ""), action.get("content", ""))
-            else:
-                return f"Unknown action: {name}"
+            return f"Unknown action: {name}"
         except Exception as e:
-            return f"Error executing {name}: {str(e)}"
+            return f"Error executing {name}: {e!s}"
 
     def _validate_path(self, path: str) -> str | None:
         real = os.path.realpath(path)
@@ -407,7 +430,7 @@ class CodingAgent:
             return err
         if not os.path.isfile(path):
             return f"File not found: {path}"
-        with open(path, "r") as f:
+        with open(path) as f:
             lines = f.readlines()
         total = len(lines)
         start = (offset or 1) - 1
@@ -436,7 +459,7 @@ class CodingAgent:
             return err
         if not os.path.isfile(path):
             return f"File not found: {path}"
-        with open(path, "r") as f:
+        with open(path) as f:
             content = f.read()
         count = content.count(old_string)
         if count == 0:
@@ -455,7 +478,7 @@ class CodingAgent:
             return err
         if not os.path.isfile(path):
             return f"File not found: {path}"
-        with open(path, "r") as f:
+        with open(path) as f:
             file_content = f.read()
         if after not in file_content:
             return f"ERROR: anchor string not found in {path}"
@@ -477,7 +500,8 @@ class CodingAgent:
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=15)
             output = stdout.decode("utf-8", errors="replace")
@@ -487,7 +511,7 @@ class CodingAgent:
             if len(lines) > 50:
                 return "\n".join(lines[:50]) + f"\n... ({len(lines)} total matches, showing first 50)"
             return output.strip()
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return "grep timed out"
         except Exception as e:
             return f"grep error: {e}"
@@ -509,7 +533,8 @@ class CodingAgent:
         try:
             proc = await asyncio.create_subprocess_shell(
                 command,
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
                 cwd=working_dir,
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
@@ -523,7 +548,7 @@ class CodingAgent:
             if len(result) > 8000:
                 result = result[:8000] + "\n[...truncated...]"
             return result
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return "Command timed out (60s)"
         except Exception as e:
             return f"Shell error: {e}"
@@ -540,6 +565,7 @@ class CodingAgent:
     def _prim_load_skill(self, name: str) -> str:
         """Load a skill into the agent's context."""
         from jarvis.tools.skills import read_skill
+
         if not name:
             return "ERROR: skill name required"
         content = read_skill(name)
@@ -551,6 +577,7 @@ class CodingAgent:
     def _prim_list_skills(self) -> str:
         """List all available skills."""
         from jarvis.tools.skills import list_skills
+
         skills = list_skills()
         if not skills:
             return "No skills available. Use write_skill to create one."
@@ -562,6 +589,7 @@ class CodingAgent:
     def _prim_write_skill(self, name: str, content: str) -> str:
         """Write a new skill."""
         from jarvis.tools.skills import write_skill
+
         if not name or not content:
             return "ERROR: both name and content are required"
         path = write_skill(name, content)

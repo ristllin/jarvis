@@ -1,5 +1,4 @@
-from dataclasses import dataclass, field
-from typing import FrozenSet
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -39,6 +38,7 @@ class ImmutableRules:
         text_lower = text.lower()
         for pattern_str, violation_msg in danger_patterns:
             import re
+
             if re.search(pattern_str, text_lower):
                 violations.append(violation_msg)
         return violations

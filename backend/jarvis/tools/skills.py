@@ -6,11 +6,12 @@ knowledge, patterns, conventions, or instructions that can be loaded into contex
 on demand. JARVIS can create new skills for future use and load existing ones
 when working on relevant tasks.
 """
+
 import os
-import json
-from datetime import datetime, timezone
-from jarvis.tools.base import Tool, ToolResult
+from datetime import UTC, datetime
+
 from jarvis.observability.logger import get_logger
+from jarvis.tools.base import Tool, ToolResult
 
 log = get_logger("tools.skills")
 
@@ -38,7 +39,7 @@ def list_skills() -> list[dict]:
             continue
         fpath = os.path.join(SKILLS_DIR, fname)
         try:
-            with open(fpath, "r") as f:
+            with open(fpath) as f:
                 content = f.read()
             # Extract title from first # heading
             title = fname.replace(".md", "").replace("-", " ").title()
@@ -56,16 +57,16 @@ def list_skills() -> list[dict]:
                 if in_body and line.strip() and not line.startswith("#"):
                     description = line.strip()[:200]
                     break
-            skills.append({
-                "name": fname.replace(".md", ""),
-                "title": title,
-                "description": description,
-                "file": fname,
-                "size": len(content),
-                "modified": datetime.fromtimestamp(
-                    os.path.getmtime(fpath), tz=timezone.utc
-                ).isoformat(),
-            })
+            skills.append(
+                {
+                    "name": fname.replace(".md", ""),
+                    "title": title,
+                    "description": description,
+                    "file": fname,
+                    "size": len(content),
+                    "modified": datetime.fromtimestamp(os.path.getmtime(fpath), tz=UTC).isoformat(),
+                }
+            )
         except Exception as e:
             log.warning("skill_list_error", file=fname, error=str(e))
     return skills
@@ -83,7 +84,7 @@ def read_skill(name: str) -> str | None:
             path = exact + ".md"
         else:
             return None
-    with open(path, "r") as f:
+    with open(path) as f:
         return f.read()
 
 
@@ -106,29 +107,21 @@ class SkillsTool(Tool):
     )
     timeout_seconds = 30
 
-    async def execute(self, action: str = "list", name: str = "",
-                      content: str = "", **kwargs) -> ToolResult:
+    async def execute(self, action: str = "list", name: str = "", content: str = "", **kwargs) -> ToolResult:
         if action == "list":
             return self._list()
-        elif action == "read":
+        if action == "read":
             return self._read(name)
-        elif action == "write":
+        if action == "write":
             return self._write(name, content)
-        elif action == "delete":
+        if action == "delete":
             return self._delete(name)
-        else:
-            return ToolResult(
-                success=False, output="",
-                error=f"Unknown action: {action}. Use: list, read, write, delete"
-            )
+        return ToolResult(success=False, output="", error=f"Unknown action: {action}. Use: list, read, write, delete")
 
     def _list(self) -> ToolResult:
         skills = list_skills()
         if not skills:
-            return ToolResult(
-                success=True,
-                output="No skills found. Create one with action='write'."
-            )
+            return ToolResult(success=True, output="No skills found. Create one with action='write'.")
         lines = [f"📚 **{len(skills)} skill(s) available:**\n"]
         for s in skills:
             lines.append(
@@ -144,8 +137,7 @@ class SkillsTool(Tool):
         content = read_skill(name)
         if content is None:
             return ToolResult(
-                success=False, output="",
-                error=f"Skill '{name}' not found. Use action='list' to see available skills."
+                success=False, output="", error=f"Skill '{name}' not found. Use action='list' to see available skills."
             )
         return ToolResult(success=True, output=content)
 
@@ -156,10 +148,7 @@ class SkillsTool(Tool):
             return ToolResult(success=False, output="", error="'content' parameter required")
         path = write_skill(name, content)
         log.info("skill_written", name=name, path=path, size=len(content))
-        return ToolResult(
-            success=True,
-            output=f"Skill '{name}' saved to {path} ({len(content)} bytes)"
-        )
+        return ToolResult(success=True, output=f"Skill '{name}' saved to {path} ({len(content)} bytes)")
 
     def _delete(self, name: str) -> ToolResult:
         if not name:

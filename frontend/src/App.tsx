@@ -12,14 +12,16 @@ import { DirectiveEditor } from './components/DirectiveEditor'
 import { ControlBar } from './components/ControlBar'
 import { ChatPanel } from './components/ChatPanel'
 import { AnalyticsPanel } from './components/AnalyticsPanel'
+import { IterationDebugPanel } from './components/IterationDebugPanel'
 import type { JarvisStatus, BudgetStatus, MemoryStats } from './types'
-import { Bot, DollarSign, Brain, ScrollText, Wrench, Cpu, FileEdit, MessageCircle, BarChart3 } from 'lucide-react'
+import { Bot, DollarSign, Brain, ScrollText, Wrench, Cpu, FileEdit, MessageCircle, BarChart3, Activity } from 'lucide-react'
 
-type Tab = 'dashboard' | 'chat' | 'analytics' | 'budget' | 'memory' | 'logs' | 'tools' | 'models' | 'directive'
+type Tab = 'dashboard' | 'chat' | 'analytics' | 'budget' | 'memory' | 'logs' | 'tools' | 'models' | 'directive' | 'iterations'
 
 const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: <Bot size={18} /> },
   { id: 'chat', label: 'Chat', icon: <MessageCircle size={18} /> },
+  { id: 'iterations', label: 'Iterations', icon: <Activity size={18} /> },
   { id: 'analytics', label: 'Analytics', icon: <BarChart3 size={18} /> },
   { id: 'budget', label: 'Budget', icon: <DollarSign size={18} /> },
   { id: 'memory', label: 'Memory', icon: <Brain size={18} /> },
@@ -119,6 +121,7 @@ export default function App() {
           {tab === 'logs' && <LogViewer />}
           {tab === 'tools' && <ToolUsagePanel />}
           {tab === 'models' && <ModelHierarchyPanel />}
+          {tab === 'iterations' && <IterationDebugPanel />}
           {tab === 'directive' && <DirectiveEditor currentDirective={status?.directive || ''} onUpdate={refresh} />}
         </div>
       </main>

@@ -3,10 +3,12 @@ resource_manager tool — allows JARVIS to view and manage API provider resource
 JARVIS can check balances, add API keys, update known balances, and add new providers.
 Supports multiple currencies/units (USD, EUR, credits, requests, etc.).
 """
+
 import json
-from jarvis.tools.base import Tool, ToolResult
-from jarvis.budget.tracker import BudgetTracker, CURRENCY_SYMBOLS
+
+from jarvis.budget.tracker import CURRENCY_SYMBOLS, BudgetTracker
 from jarvis.observability.logger import get_logger
+from jarvis.tools.base import Tool, ToolResult
 
 log = get_logger("tools.resource_manager")
 
@@ -28,15 +30,15 @@ class ResourceManagerTool(Tool):
         try:
             if action == "view":
                 return await self._view()
-            elif action == "update":
+            if action == "update":
                 return await self._update(**kwargs)
-            elif action == "add":
+            if action == "add":
                 return await self._add(**kwargs)
-            else:
-                return ToolResult(
-                    success=False, output="",
-                    error=f"Unknown action: {action}. Use: view, update, add",
-                )
+            return ToolResult(
+                success=False,
+                output="",
+                error=f"Unknown action: {action}. Use: view, update, add",
+            )
         except Exception as e:
             log.error("resource_manager_error", action=action, error=str(e))
             return ToolResult(success=False, output="", error=str(e))
@@ -46,19 +48,18 @@ class ResourceManagerTool(Tool):
         sym = CURRENCY_SYMBOLS.get(currency, "")
         if currency in ("USD", "EUR", "GBP"):
             return f"{sym}{value:.{decimals}f}"
-        else:
-            # Non-monetary: "989 credits", "150 requests"
-            return f"{value:.0f} {currency}"
+        # Non-monetary: "989 credits", "150 requests"
+        return f"{value:.0f} {currency}"
 
     async def _view(self) -> ToolResult:
         status = await self.budget.get_status()
         providers = status.get("providers", [])
 
         lines = [
-            f"=== Resource Overview ===",
+            "=== Resource Overview ===",
             f"Total spent this month (USD): ${status['spent']:.4f}",
             f"Estimated total remaining (USD): ${status['remaining']:.2f}",
-            f"",
+            "",
         ]
 
         for p in providers:
@@ -73,11 +74,15 @@ class ResourceManagerTool(Tool):
             lines.append(f"── {name} ({tier}, {currency}) ──")
             if balance is not None:
                 lines.append(f"  Known balance: {self._fmt(balance, currency)}")
-                lines.append(f"  Spent (tracked): {self._fmt(spent, currency, 4 if currency in ('USD','EUR','GBP') else 0)}")
+                lines.append(
+                    f"  Spent (tracked): {self._fmt(spent, currency, 4 if currency in ('USD', 'EUR', 'GBP') else 0)}"
+                )
                 lines.append(f"  Estimated remaining: {self._fmt(remaining, currency)}")
             else:
-                lines.append(f"  Balance: unknown")
-                lines.append(f"  Spent (tracked): {self._fmt(spent, currency, 4 if currency in ('USD','EUR','GBP') else 0)}")
+                lines.append("  Balance: unknown")
+                lines.append(
+                    f"  Spent (tracked): {self._fmt(spent, currency, 4 if currency in ('USD', 'EUR', 'GBP') else 0)}"
+                )
             if notes:
                 lines.append(f"  Notes: {notes}")
             updated = p.get("balance_updated_at")
@@ -87,10 +92,16 @@ class ResourceManagerTool(Tool):
 
         return ToolResult(success=True, output="\n".join(lines))
 
-    async def _update(self, provider: str = None, known_balance: float = None,
-                      tier: str = None, currency: str = None,
-                      notes: str = None,
-                      reset_spending: bool = False, **kwargs) -> ToolResult:
+    async def _update(
+        self,
+        provider: str = None,
+        known_balance: float = None,
+        tier: str = None,
+        currency: str = None,
+        notes: str = None,
+        reset_spending: bool = False,
+        **kwargs,
+    ) -> ToolResult:
         if not provider:
             return ToolResult(success=False, output="", error="'provider' is required")
 
@@ -107,13 +118,20 @@ class ResourceManagerTool(Tool):
             output=f"Updated {provider}: {json.dumps(result, default=str)}",
         )
 
-    async def _add(self, provider: str = None, api_key: str = None,
-                   known_balance: float = None, tier: str = "unknown",
-                   currency: str = "USD", notes: str = None, **kwargs) -> ToolResult:
+    async def _add(
+        self,
+        provider: str = None,
+        api_key: str = None,
+        known_balance: float = None,
+        tier: str = "unknown",
+        currency: str = "USD",
+        notes: str = None,
+        **kwargs,
+    ) -> ToolResult:
         if not provider:
             return ToolResult(success=False, output="", error="'provider' is required")
 
-        result = await self.budget.add_provider(
+        await self.budget.add_provider(
             provider=provider,
             api_key=api_key,
             known_balance=known_balance,

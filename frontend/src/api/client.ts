@@ -92,6 +92,9 @@ export const api = {
   clearShortTermMemories: () =>
     fetchJSON<any>('/memory/short-term', { method: 'DELETE' }),
 
+  // Iteration history (debug panel)
+  getIterationHistory: (limit = 20) => fetchJSON<any>(`/iteration-history?limit=${limit}`),
+
   // Analytics
   getAnalytics: (range = '24h') => fetchJSON<any>(`/analytics?range=${range}`),
 

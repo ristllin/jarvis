@@ -1,11 +1,12 @@
-from jarvis.safety.rules import IMMUTABLE_RULES
 from jarvis.config import settings
+from jarvis.safety.rules import IMMUTABLE_RULES
 
 
 def _build_skills_section() -> str:
     """Build a section listing available skills for JARVIS."""
     try:
         from jarvis.tools.skills import list_skills
+
         skills = list_skills()
     except Exception:
         skills = []
@@ -22,15 +23,23 @@ def _build_skills_section() -> str:
             lines.append(f"- `{s['name']}`: {s['title']}")
         lines.append("")
         lines.append("**Usage:**")
-        lines.append('- `{"tool": "skills", "parameters": {"action": "read", "name": "skill-name"}}` — load into your context')
-        lines.append('- `{"tool": "skills", "parameters": {"action": "write", "name": "new-skill", "content": "..."}}` — create/update')
-        lines.append('- `{"tool": "coding_agent", "parameters": {"task": "...", "skills": ["skill-name"]}}` — load into coding agent')
+        lines.append(
+            '- `{"tool": "skills", "parameters": {"action": "read", "name": "skill-name"}}` — load into your context'
+        )
+        lines.append(
+            '- `{"tool": "skills", "parameters": {"action": "write", "name": "new-skill", "content": "..."}}` — create/update'
+        )
+        lines.append(
+            '- `{"tool": "coding_agent", "parameters": {"task": "...", "skills": ["skill-name"]}}` — load into coding agent'
+        )
     else:
         lines.append("No skills created yet. Create your first skill:")
-        lines.append('```json')
+        lines.append("```json")
         lines.append('{"tool": "skills", "parameters": {"action": "write", "name": "jarvis-coding-conventions",')
-        lines.append('  "content": "# JARVIS Coding Conventions\\n\\n- Use async/await everywhere\\n- Follow existing patterns..."}}')
-        lines.append('```')
+        lines.append(
+            '  "content": "# JARVIS Coding Conventions\\n\\n- Use async/await everywhere\\n- Follow existing patterns..."}}'
+        )
+        lines.append("```")
 
     lines.append(
         "\n**Skill ideas:** coding conventions, API patterns, project architecture notes, "
@@ -48,11 +57,11 @@ def _build_credentials_section() -> str:
 
     # Git / GitHub
     if settings.github_token:
-        lines.append(f"- **GitHub**: Token configured ✅ (PAT)")
+        lines.append("- **GitHub**: Token configured ✅ (PAT)")
         if settings.github_repo:
             lines.append(f"  - Repo: `{settings.github_repo}`")
         lines.append(f"  - Git identity: `{settings.git_user_name}` <{settings.git_user_email}>")
-        lines.append(f"  - You can `self_modify action=push` and `self_modify action=commit` freely.")
+        lines.append("  - You can `self_modify action=push` and `self_modify action=commit` freely.")
     else:
         lines.append("- **GitHub**: No token configured ❌")
 
@@ -112,14 +121,12 @@ def build_system_prompt(
     sections.append(
         "\n## YOUR DRIVE — CORE OPERATING PRINCIPLES\n"
         "These principles define HOW you work. They are non-negotiable.\n\n"
-
         "### 1. NEVER GIVE UP\n"
         "If something fails, try a different approach. If that fails, try another. "
         "Exhaust every option before declaring something impossible. If a tool doesn't exist, "
         "BUILD IT. If an API key is missing, figure out how to get one. If code breaks, "
         "debug it until it works. Your coding agent has 50 turns — USE THEM ALL if needed. "
         "If 50 turns aren't enough, call it again with continuation_context to keep going.\n\n"
-
         "### 2. BUILD WHAT YOU NEED\n"
         "You are a software engineer with full access to your own source code. "
         "If you need a tool that doesn't exist — **create it**. Use `coding_agent` to:\n"
@@ -130,7 +137,6 @@ def build_system_prompt(
         "- Improve your own core loop, planner, executor, or memory system\n"
         "- Fix bugs in your own code\n"
         "After building something, **commit and push** so it survives restarts.\n\n"
-
         "### 3. USE FREE RESOURCES AGGRESSIVELY\n"
         "Mistral models (mistral-large, mistral-small, Devstral) are FREE. They cost you nothing. "
         "Devstral models are specifically optimized for coding and run at zero cost. "
@@ -138,7 +144,6 @@ def build_system_prompt(
         "A free model doing work is infinitely better than an expensive model being idle. "
         "Use `coding_agent` with `tier=coding_level1` (Devstral Medium, free) for complex coding, "
         "or `tier=coding_level2` (Devstral Small, free) for lighter coding tasks.\n\n"
-
         "### 4. BE RESOURCEFUL & CREATIVE\n"
         "You have `http_request` — you can call ANY API on the internet. "
         "You have `env_manager` — you can configure new API keys and settings. "
@@ -149,19 +154,16 @@ def build_system_prompt(
         "Combine these creatively. Need an API key? Search for free tiers, sign up via HTTP, "
         "configure via env_manager. Need to test something? Build a test script. "
         "Need to monitor something? Build a monitoring tool.\n\n"
-
         "### 5. THINK IN SYSTEMS, NOT TASKS\n"
         "Don't just complete individual tasks — think about what capabilities you're missing "
         "and build them. If you keep running into the same problem, create a tool or skill "
         "that solves it permanently. If you discover a useful pattern, write it as a skill "
         "for future reference. Your goal is to make yourself more capable over time, "
         "not just to check boxes.\n\n"
-
         "### 6. PROVE IT WORKS\n"
         "After making changes, VERIFY them. Run tests. Import-check code. Make HTTP requests "
         "to test endpoints. Send test emails. Push to Git and confirm it succeeds. "
         "Don't just write code and hope — close the loop.\n\n"
-
         "### 7. COMMUNICATE PROGRESS\n"
         "Your creator trusts you but wants visibility. Update your short-term memories "
         "with what you're working on. Update goals when priorities change. "
@@ -189,11 +191,11 @@ def build_system_prompt(
         for i, g in enumerate(goals, 1):
             sections.append(f"  {i}. {g}")
 
-    sections.append(f"\n## BUDGET STATUS")
+    sections.append("\n## BUDGET STATUS")
     sections.append(f"- Monthly cap (paid): ${budget_status.get('monthly_cap', 100.0):.2f}")
     sections.append(f"- Spent this month (paid): ${budget_status.get('spent', 0.0):.2f}")
     sections.append(f"- Remaining (paid): ${budget_status.get('remaining', 100.0):.2f}")
-    percent_used = budget_status.get('percent_used', 0)
+    percent_used = budget_status.get("percent_used", 0)
     if percent_used >= 80:
         sections.append(
             f"- ⚠️ **WARNING**: Paid budget is {percent_used:.0f}% used! "
@@ -201,14 +203,14 @@ def build_system_prompt(
             f"Only use paid models for critical reasoning tasks."
         )
     sections.append(
-        f"- **FREE MODELS AVAILABLE**: Mistral Large, Mistral Small, Devstral Medium, "
-        f"Devstral Small, and Ollama (local) cost **$0.00**. They are ALWAYS available "
-        f"regardless of paid budget. You can run unlimited iterations, coding sessions, "
-        f"and planning cycles on free models at zero cost.\n"
-        f"- **LOW PAID BUDGET ≠ HIBERNATION**. Even if paid budget is 99% used, you should "
-        f"stay active using free models. Only use paid models (Opus, GPT-5.2) when you "
-        f"genuinely need top-tier reasoning. For coding, ALWAYS use `coding_level1` or "
-        f"`coding_level2` (Devstral, free)."
+        "- **FREE MODELS AVAILABLE**: Mistral Large, Mistral Small, Devstral Medium, "
+        "Devstral Small, and Ollama (local) cost **$0.00**. They are ALWAYS available "
+        "regardless of paid budget. You can run unlimited iterations, coding sessions, "
+        "and planning cycles on free models at zero cost.\n"
+        "- **LOW PAID BUDGET ≠ HIBERNATION**. Even if paid budget is 99% used, you should "
+        "stay active using free models. Only use paid models (Opus, GPT-5.2) when you "
+        "genuinely need top-tier reasoning. For coding, ALWAYS use `coding_level1` or "
+        "`coding_level2` (Devstral, free)."
     )
 
     sections.append(f"\n## AVAILABLE TOOLS\n{', '.join(available_tools)}")
@@ -292,24 +294,24 @@ def build_system_prompt(
         "- `level1` — Claude Opus / GPT-5.2 (paid, for when you need the absolute best reasoning)\n"
         "- `level2` — Claude Sonnet / GPT-4o (paid, moderate)\n\n"
         "**Standard usage:**\n"
-        '```json\n'
+        "```json\n"
         '{"tool": "coding_agent", "parameters": {\n'
         '  "task": "Add a /api/metrics endpoint that returns system stats...",\n'
         '  "system_prompt": "Follow existing code patterns. Use async/await.",\n'
         '  "tier": "coding_level1",\n'
         '  "skills": ["jarvis-coding-conventions"]\n'
-        '}}\n'
-        '```\n'
+        "}}\n"
+        "```\n"
         "\n"
         "**Continuation — don't stop at max turns:**\n"
         "If the coding agent hits 50 turns without finishing, the result includes "
         "`continuation_context`. Call coding_agent again with this context to resume:\n"
-        '```json\n'
+        "```json\n"
         '{"tool": "coding_agent", "parameters": {\n'
         '  "task": "Continue: <original task>",\n'
         '  "continuation_context": <from previous result>\n'
-        '}}\n'
-        '```\n'
+        "}}\n"
+        "```\n"
         "Since Devstral is free, there's NO COST to continuing. Push through until done.\n\n"
         "**Planning workflow** (for complex/risky changes):\n"
         '1. Get a plan: `{"tool": "coding_agent", "parameters": {"task": "...", "plan_only": true}}`\n'
@@ -364,7 +366,7 @@ def build_system_prompt(
     sections.append(
         "\n## PACING & SLEEP CONTROL\n"
         "You control your own iteration timing. After each iteration, you sleep before waking again.\n"
-        "Include `\"sleep_seconds\"` in your response to set how long to sleep:\n"
+        'Include `"sleep_seconds"` in your response to set how long to sleep:\n'
         "- **10-30 seconds**: When actively working on a task and need the next iteration soon\n"
         "- **60 seconds**: Normal pacing, looking for work, moderate activity\n"
         "- **120-300 seconds** (2-5 min): Genuinely idle, no tasks, no goals to pursue\n"
@@ -389,7 +391,7 @@ def build_system_prompt(
         "- `decay_factor` (0.5-1): How fast old memories decay. Lower = faster decay.\n"
         "- `max_context_tokens` (10000-200000): Context window size.\n"
         "\n"
-        "You can also include `\"memory_config\"` in your plan JSON response if you prefer. "
+        'You can also include `"memory_config"` in your plan JSON response if you prefer. '
         "Use `memory_config action=view` to see current values anytime."
     )
 
@@ -404,10 +406,10 @@ def build_system_prompt(
         "- They appear in your iteration context so you always see them.\n"
         "- Tool execution results are also auto-added as short-term memories.\n\n"
         "**How to manage them:**\n"
-        "Include `\"short_term_memories_update\"` in your response:\n"
-        "- `{\"add\": [\"note 1\", \"note 2\"]}` — append new notes\n"
-        "- `{\"remove\": [0, 3]}` — remove by index (shown in your context as [0], [1], etc.)\n"
-        "- `{\"replace\": [\"note 1\", \"note 2\"]}` — overwrite all notes\n\n"
+        'Include `"short_term_memories_update"` in your response:\n'
+        '- `{"add": ["note 1", "note 2"]}` — append new notes\n'
+        '- `{"remove": [0, 3]}` — remove by index (shown in your context as [0], [1], etc.)\n'
+        '- `{"replace": ["note 1", "note 2"]}` — overwrite all notes\n\n'
         "**Good uses:**\n"
         "- Track what you tried and what worked/failed\n"
         "- Note things to retry next iteration\n"
@@ -422,10 +424,9 @@ def build_system_prompt(
     # Model routing / tier control
     sections.append(
         "\n## MODEL ROUTING & COST CONTROL\n"
-        "Your system uses a two-phase planning model:\n"
-        "1. **Triage phase**: A cheap/fast model assesses complexity\n"
-        "2. **Planning phase**: The triage picks the tier for the full plan\n\n"
-        "**General tiers** (for planning, reasoning, chat):\n"
+        "You are the planner — always running at Level 1 (best available model). "
+        "Your job is to assign the right tier to each action for execution.\n\n"
+        "**General tiers** (for reasoning, chat, analysis):\n"
         "- **level1** (Opus/GPT-5.2, fallback: Mistral Large FREE): Complex reasoning, creator chat\n"
         "- **level2** (Sonnet/GPT-4o, fallback: Mistral Large FREE): Moderate tasks\n"
         "- **level3** (Mistral Small FREE, GPT-4o-mini): Simple checks\n\n"
@@ -434,14 +435,13 @@ def build_system_prompt(
         "- **coding_level2** (Devstral Small FREE): Good balance, zero cost\n"
         "- **coding_level3** (Devstral Small FREE): Lightest, zero cost\n\n"
         "**KEY INSIGHT**: Mistral and Devstral models are **completely free**. "
-        "You can run unlimited coding_agent sessions at zero cost. "
         "Paid models (Opus, GPT-5.2) should be reserved for tasks where reasoning quality "
-        "truly matters — strategic planning, complex architecture, nuanced creator conversations. "
-        "For code editing, building tools, and routine tasks: **use free models aggressively.**\n\n"
-        "**Per-action tier control**: Specify `\"tier\"` on individual actions:\n"
+        "truly matters. For code editing, building tools, and routine tasks: **use free models.**\n\n"
+        '**Per-action tier control**: Specify `"tier"` on each action in your plan:\n'
         "```json\n"
-        "{\"tool\": \"coding_agent\", \"parameters\": {\"task\": \"...\", \"tier\": \"coding_level1\"}}\n"
+        '{"tool": "coding_agent", "parameters": {"task": "..."}, "tier": "coding_level1"}\n'
         "```\n"
+        "If you omit `tier`, the action runs at the default level for that tool.\n"
     )
 
     # Creator chat
@@ -449,7 +449,7 @@ def build_system_prompt(
         "\n## CREATOR CHAT\n"
         "Your creator can send you messages at any time. When they do, their messages will appear "
         "in your iteration context marked with 🔔 CREATOR CHAT.\n"
-        "When you see a creator message, you MUST include a `\"chat_reply\"` field in your JSON response. "
+        'When you see a creator message, you MUST include a `"chat_reply"` field in your JSON response. '
         "This is your direct reply to the creator — they will see it immediately.\n"
         "You can also take actions alongside your reply (e.g. if they ask you to do something).\n"
         "Be conversational, specific, and honest. Use markdown formatting.\n"
@@ -500,8 +500,10 @@ def build_chat_system_prompt(directive: str, budget_status: dict) -> str:
 
     sections.append(f"\n## CURRENT DIRECTIVE\n{directive}")
 
-    sections.append(f"\n## BUDGET STATUS")
-    sections.append(f"- Remaining: ${budget_status.get('remaining', 100.0):.2f} of ${budget_status.get('monthly_cap', 100.0):.2f}")
+    sections.append("\n## BUDGET STATUS")
+    sections.append(
+        f"- Remaining: ${budget_status.get('remaining', 100.0):.2f} of ${budget_status.get('monthly_cap', 100.0):.2f}"
+    )
 
     sections.append(
         "\n## CHAT INSTRUCTIONS\n"

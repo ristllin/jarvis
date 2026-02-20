@@ -3,14 +3,15 @@ Capability tests — verify Grok, tools, chat flow, and core components work.
 Run with: pytest backend/tests/test_capabilities.py -v
 Use -k "not live" to skip tests that hit real APIs (Grok, Tavily, etc.).
 """
+
+from unittest.mock import patch
+
 import pytest
-import pytest_asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from jarvis.core.loop import HIBERNATE_WHEN_TINY_ONLY_SECONDS, TINY_MODELS
 from jarvis.llm.providers.grok import GrokProvider
-from jarvis.llm.router import LLMRouter, DEFAULT_TIERS
+from jarvis.llm.router import DEFAULT_TIERS
 from jarvis.tools.coingecko import CoinGeckoTool
 from jarvis.tools.web_search import WebSearchTool
-from jarvis.core.loop import TINY_MODELS, HIBERNATE_WHEN_TINY_ONLY_SECONDS
 
 
 class TestModelTiers:
@@ -52,6 +53,7 @@ class TestGrokProvider:
 
     def test_grok_models_defined(self):
         from jarvis.llm.providers.grok import GROK_MODELS
+
         assert "grok-4-1-fast-reasoning" in GROK_MODELS
         assert "grok-3-mini" in GROK_MODELS
 
@@ -77,6 +79,7 @@ class TestGrokLive:
     async def test_grok_completion_live(self):
         """Verify Grok API responds. Run: pytest -k live -s"""
         import os
+
         if not os.environ.get("GROK_API_KEY"):
             pytest.skip("GROK_API_KEY not set")
         provider = GrokProvider()
@@ -126,6 +129,7 @@ class TestChatResponseSchema:
 
     def test_chat_response_schema_has_optional_fields(self):
         from jarvis.api.schemas import ChatResponse
+
         # ChatResponse should allow model, provider, tokens_used as optional
         r = ChatResponse(reply="test", agentic=True)
         assert r.model is None

@@ -24,13 +24,15 @@ class SendEmailTool(Tool):
             "required": ["subject", "body", "to_email"],
         }
 
-    async def execute(self, subject: str = "", body: str = "", to_email: str = "",
-                      to: str = "", **kwargs) -> ToolResult:
+    async def execute(
+        self, subject: str = "", body: str = "", to_email: str = "", to: str = "", **kwargs
+    ) -> ToolResult:
         # Accept both "to" and "to_email" (LLMs use different names)
         recipient = to_email or to or kwargs.get("recipient", "")
         if not recipient:
-            return ToolResult(success=False, output="",
-                              error="Missing recipient — provide 'to_email' or 'to' parameter")
+            return ToolResult(
+                success=False, output="", error="Missing recipient — provide 'to_email' or 'to' parameter"
+            )
         if not subject:
             return ToolResult(success=False, output="", error="Missing 'subject' parameter")
         if not body:
