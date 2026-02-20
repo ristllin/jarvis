@@ -1,6 +1,7 @@
-import os
 import json
-from datetime import datetime, timezone
+import os
+from datetime import UTC, datetime
+
 from jarvis.memory.models import BlobRecord
 from jarvis.observability.logger import get_logger
 
@@ -15,7 +16,7 @@ class BlobStorage:
         os.makedirs(self.blob_dir, exist_ok=True)
 
     def store(self, event_type: str, content: str, metadata: dict = None) -> str:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         record = BlobRecord(
             timestamp=now.isoformat(),
             event_type=event_type,
@@ -39,7 +40,7 @@ class BlobStorage:
             if len(entries) >= limit:
                 break
             filepath = os.path.join(self.blob_dir, fname)
-            with open(filepath, "r") as f:
+            with open(filepath) as f:
                 lines = f.readlines()
             for line in reversed(lines):
                 if len(entries) >= limit:
@@ -61,7 +62,7 @@ class BlobStorage:
             if len(entries) >= limit:
                 break
             filepath = os.path.join(self.blob_dir, fname)
-            with open(filepath, "r") as f:
+            with open(filepath) as f:
                 lines = f.readlines()
             for line in reversed(lines):
                 if len(entries) >= limit:
@@ -84,7 +85,7 @@ class BlobStorage:
         )[:3]  # Check last 3 files
         for fname in files:
             filepath = os.path.join(self.blob_dir, fname)
-            with open(filepath, "r") as f:
+            with open(filepath) as f:
                 for line in f:
                     try:
                         entry = json.loads(line.strip())

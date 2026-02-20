@@ -101,19 +101,23 @@ else
             jarvis/tools/registry.py \
             jarvis/tools/coding_agent.py \
             jarvis/tools/self_modify.py \
+            jarvis/tools/self_analysis.py \
             jarvis/tools/resource_manager.py \
+            jarvis/tools/code_architect.py \
             jarvis/agents/__init__.py \
             jarvis/agents/coding.py \
             jarvis/safety/prompt_builder.py \
             jarvis/core/loop.py \
             jarvis/core/planner.py \
             jarvis/core/executor.py \
+            jarvis/core/telegram_listener.py \
             jarvis/api/routes.py \
             jarvis/api/schemas.py \
             jarvis/budget/tracker.py \
             jarvis/memory/working.py \
             jarvis/memory/vector.py \
             jarvis/memory/blob.py \
+            jarvis/llm/providers/anthropic.py \
             jarvis/models.py \
             jarvis/main.py \
             jarvis/config.py; do
@@ -122,6 +126,12 @@ else
                 cp -f "/app/$f" "$CODE_BACKUP/backend/$f"
             fi
         done
+
+        # Force-copy skills directory from image
+        if [ -d "/app/jarvis/skills" ]; then
+            mkdir -p "$CODE_BACKUP/backend/jarvis/skills"
+            cp -f /app/jarvis/skills/*.md "$CODE_BACKUP/backend/jarvis/skills/" 2>/dev/null || true
+        fi
 
         # Commit the image update in the backup repo
         cd "$CODE_BACKUP/backend"

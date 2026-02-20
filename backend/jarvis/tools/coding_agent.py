@@ -9,10 +9,12 @@ The main agent provides:
   - tier (optional): LLM tier to use (default: level2)
   - max_turns (optional): max editing iterations (default: 25)
 """
+
 import json
-from jarvis.tools.base import Tool, ToolResult
+
 from jarvis.agents.coding import CodingAgent
 from jarvis.observability.logger import get_logger
+from jarvis.tools.base import Tool, ToolResult
 
 log = get_logger("tools.coding_agent")
 

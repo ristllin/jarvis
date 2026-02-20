@@ -1,14 +1,18 @@
 import json
-import os
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter
 from sqlalchemy import desc, select
 
 from jarvis.api.schemas import (
-    DirectiveUpdate, MemoryMarkPermanent, BudgetOverride,
-    ChatRequest, ChatResponse, GoalsUpdate,
-    ProviderBalanceUpdate, AddProviderRequest,
+    AddProviderRequest,
+    BudgetOverride,
+    ChatRequest,
+    ChatResponse,
+    DirectiveUpdate,
+    GoalsUpdate,
+    MemoryMarkPermanent,
+    ProviderBalanceUpdate,
 )
 from jarvis.api.websocket import ws_manager
 from jarvis.observability.logger import get_logger
@@ -22,6 +26,7 @@ router = APIRouter(prefix="/api")
 def get_app_state():
     """Get shared app state — set during startup."""
     from jarvis.main import app_state
+
     return app_state
 
 
@@ -229,6 +234,7 @@ async def wake():
 async def override_budget(body: BudgetOverride):
     state = get_app_state()
     from jarvis.models import BudgetConfig
+
     async with state["session_factory"]() as session:
         config = await session.get(BudgetConfig, 1)
         if config:
@@ -237,11 +243,11 @@ async def override_budget(body: BudgetOverride):
     return {"ok": True, "new_cap": body.new_cap_usd}
 
 
-
 @router.get("/news")
 async def get_news():
     """Fetch news data from the news monitoring service."""
     from jarvis.tools.news_monitor import NewsMonitorTool
+
     news_tool = NewsMonitorTool()
     result = await news_tool.execute(query="latest news", max_results=5)
     if not result.success:
@@ -254,6 +260,7 @@ async def get_news():
 
 
 # ── Provider balance management ───────────────────────────────────────────
+
 
 @router.get("/providers")
 async def get_providers():
@@ -295,6 +302,7 @@ async def add_provider(body: AddProviderRequest):
 
 # ── Chat endpoint ──────────────────────────────────────────────────────────
 
+
 @router.post("/chat", response_model=ChatResponse)
 async def chat(body: ChatRequest):
     """Chat directly with JARVIS. Messages are recorded in blob and DB."""
@@ -313,6 +321,7 @@ async def chat(body: ChatRequest):
 
     # Store in DB
     from jarvis.models import ChatMessage
+
     async with state["session_factory"]() as session:
         msg = ChatMessage(role="creator", content=body.message)
         session.add(msg)
@@ -360,11 +369,13 @@ async def chat(body: ChatRequest):
         await session.commit()
 
     # Broadcast chat event via WebSocket
-    await ws_manager.broadcast({
-        "type": "chat_message",
-        "role": "jarvis",
-        "content": response.content[:200],
-    })
+    await ws_manager.broadcast(
+        {
+            "type": "chat_message",
+            "role": "jarvis",
+            "content": response.content[:200],
+        }
+    )
 
     # Wake the core loop so JARVIS processes any implications quickly
     core_loop = state.get("core_loop")
@@ -390,10 +401,9 @@ async def get_chat_history(limit: int = 50):
 async def _get_chat_history(session_factory, limit: int = 50) -> list[dict]:
     """Retrieve recent chat messages from DB."""
     from jarvis.models import ChatMessage
+
     async with session_factory() as session:
-        result = await session.execute(
-            select(ChatMessage).order_by(desc(ChatMessage.id)).limit(limit)
-        )
+        result = await session.execute(select(ChatMessage).order_by(desc(ChatMessage.id)).limit(limit))
         messages = result.scalars().all()
         return [
             {
@@ -412,11 +422,14 @@ async def get_history(limit: int = 20):
     """Return recent repo change history from blob storage."""
     state = get_app_state()
     entries = state["blob"].read_recent(limit=200)
-    git_entries = [e for e in entries if "git" in e.get("content", "").lower() or e.get("metadata", {}).get("tool") == "git"]
+    git_entries = [
+        e for e in entries if "git" in e.get("content", "").lower() or e.get("metadata", {}).get("tool") == "git"
+    ]
     return {"history": git_entries[:limit]}
 
 
 # ── Analytics ──────────────────────────────────────────────────────────
+
 
 @router.get("/analytics")
 async def get_analytics(range: str = "24h"):
@@ -425,7 +438,7 @@ async def get_analytics(range: str = "24h"):
     Range: 1h, 6h, 24h, 7d, 30d
     Returns buckets with: cost, tokens, model calls, tool calls, errors.
     """
-    
+
     from sqlalchemy import text
 
     state = get_app_state()
@@ -433,14 +446,14 @@ async def get_analytics(range: str = "24h"):
 
     # Parse range into timedelta and bucket size
     range_map = {
-        "1h":  (timedelta(hours=1),   "5 minutes",  300),
-        "6h":  (timedelta(hours=6),   "30 minutes", 1800),
-        "24h": (timedelta(hours=24),  "1 hour",     3600),
-        "7d":  (timedelta(days=7),    "6 hours",    21600),
-        "30d": (timedelta(days=30),   "1 day",      86400),
+        "1h": (timedelta(hours=1), "5 minutes", 300),
+        "6h": (timedelta(hours=6), "30 minutes", 1800),
+        "24h": (timedelta(hours=24), "1 hour", 3600),
+        "7d": (timedelta(days=7), "6 hours", 21600),
+        "30d": (timedelta(days=30), "1 day", 86400),
     }
     delta, bucket_label, bucket_secs = range_map.get(range, range_map["24h"])
-    since = datetime.now(timezone.utc) - delta
+    since = datetime.now(UTC) - delta
     # SQLite stores timestamps without timezone — use compatible format
     since_str = since.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -475,7 +488,7 @@ async def get_analytics(range: str = "24h"):
         tool_data = tool_rows.fetchall()
 
     # Build time buckets
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     buckets = {}
     t = since
     while t <= now:
@@ -505,11 +518,11 @@ async def get_analytics(range: str = "24h"):
                 except ValueError:
                     ts = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
                 if ts.tzinfo is None:
-                    ts = ts.replace(tzinfo=timezone.utc)
+                    ts = ts.replace(tzinfo=UTC)
             else:
                 ts = ts_str
                 if ts.tzinfo is None:
-                    ts = ts.replace(tzinfo=timezone.utc)
+                    ts = ts.replace(tzinfo=UTC)
             # Find the bucket start
             elapsed = (ts - since).total_seconds()
             if elapsed < 0:
@@ -570,15 +583,17 @@ async def get_analytics(range: str = "24h"):
     # Simplify series for the chart (remove nested dicts)
     chart_series = []
     for b in series:
-        chart_series.append({
-            "time": b["time"],
-            "cost": round(b["cost"], 6),
-            "input_tokens": b["input_tokens"],
-            "output_tokens": b["output_tokens"],
-            "llm_calls": b["llm_calls"],
-            "tool_calls": b["tool_calls"],
-            "tool_errors": b["tool_errors"],
-        })
+        chart_series.append(
+            {
+                "time": b["time"],
+                "cost": round(b["cost"], 6),
+                "input_tokens": b["input_tokens"],
+                "output_tokens": b["output_tokens"],
+                "llm_calls": b["llm_calls"],
+                "tool_calls": b["tool_calls"],
+                "tool_errors": b["tool_errors"],
+            }
+        )
 
     return {
         "range": range,
@@ -722,4 +737,4 @@ async def get_iteration_history(limit: int = 20):
 
 @router.get("/health")
 async def health():
-    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+    return {"status": "ok", "timestamp": datetime.now(UTC).isoformat()}

@@ -1,10 +1,9 @@
-import asyncio
+from jarvis.budget.tracker import BudgetTracker
 from jarvis.llm.base import LLMProvider, LLMResponse
 from jarvis.llm.providers.anthropic import AnthropicProvider
-from jarvis.llm.providers.openai import OpenAIProvider
 from jarvis.llm.providers.mistral import MistralProvider
 from jarvis.llm.providers.ollama import OllamaProvider
-from jarvis.budget.tracker import BudgetTracker
+from jarvis.llm.providers.openai import OpenAIProvider
 from jarvis.observability.logger import get_logger
 
 log = get_logger("llm_router")
@@ -96,9 +95,9 @@ class LLMRouter:
 
                 try:
                     provider = self.providers[provider_name]
-                    log.info("llm_request",
-                             provider=provider_name, model=model,
-                             tier=current_tier, task=task_description)
+                    log.info(
+                        "llm_request", provider=provider_name, model=model, tier=current_tier, task=task_description
+                    )
 
                     # Record request in blob
                     if self.blob:
@@ -106,7 +105,13 @@ class LLMRouter:
                         self.blob.store(
                             event_type="llm_request",
                             content=f"Provider: {provider_name}, Model: {model}, Tier: {current_tier}\nTask: {task_description}\nLast message: {msg_summary}",
-                            metadata={"provider": provider_name, "model": model, "tier": current_tier, "task": task_description, "message_count": len(messages)},
+                            metadata={
+                                "provider": provider_name,
+                                "model": model,
+                                "tier": current_tier,
+                                "task": task_description,
+                                "message_count": len(messages),
+                            },
                         )
 
                     response = await provider.complete(
@@ -130,18 +135,23 @@ class LLMRouter:
                         self.blob.store(
                             event_type="llm_response",
                             content=f"Provider: {provider_name}, Model: {model}\nTokens: {response.total_tokens}\nResponse: {response.content[:1000]}",
-                            metadata={"provider": provider_name, "model": model, "input_tokens": response.input_tokens, "output_tokens": response.output_tokens, "total_tokens": response.total_tokens, "cost_estimate": self.budget._estimate_cost(provider_name, model, response.input_tokens, response.output_tokens)},
+                            metadata={
+                                "provider": provider_name,
+                                "model": model,
+                                "input_tokens": response.input_tokens,
+                                "output_tokens": response.output_tokens,
+                                "total_tokens": response.total_tokens,
+                                "cost_estimate": self.budget._estimate_cost(
+                                    provider_name, model, response.input_tokens, response.output_tokens
+                                ),
+                            },
                         )
 
-                    log.info("llm_response",
-                             provider=provider_name, model=model,
-                             tokens=response.total_tokens)
+                    log.info("llm_response", provider=provider_name, model=model, tokens=response.total_tokens)
                     return response
 
                 except Exception as e:
-                    log.warning("provider_failed",
-                                provider=provider_name, model=model,
-                                error=str(e))
+                    log.warning("provider_failed", provider=provider_name, model=model, error=str(e))
                     continue
 
         raise RuntimeError("All LLM providers failed — no response available")
@@ -154,7 +164,9 @@ class LLMRouter:
         for tier_name, candidates in self.tiers.items():
             info[tier_name] = [
                 {
-                    "provider": p, "model": m, "cost": c,
+                    "provider": p,
+                    "model": m,
+                    "cost": c,
                     "available": p in self.providers,
                 }
                 for p, m, c in candidates

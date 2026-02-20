@@ -1,13 +1,12 @@
 from pydantic_settings import BaseSettings
-from typing import Optional
 
 
 class Settings(BaseSettings):
     # API Keys
-    anthropic_api_key: Optional[str] = None
-    openai_api_key: Optional[str] = None
-    mistral_api_key: Optional[str] = None
-    tavily_api_key: Optional[str] = None
+    anthropic_api_key: str | None = None
+    openai_api_key: str | None = None
+    mistral_api_key: str | None = None
+    tavily_api_key: str | None = None
 
     # Ollama
     ollama_host: str = "http://ollama:11434"

@@ -1,7 +1,6 @@
-from datetime import datetime, timezone
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
-from jarvis.models import MetricsRecord, BudgetUsage, ToolUsageLog
+from sqlalchemy import func, select
+
+from jarvis.models import BudgetUsage, MetricsRecord, ToolUsageLog
 
 
 class MetricsCollector:

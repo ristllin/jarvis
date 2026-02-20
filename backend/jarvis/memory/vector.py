@@ -1,6 +1,8 @@
 import os
+from datetime import UTC, datetime
+
 import chromadb
-from datetime import datetime, timezone
+
 from jarvis.memory.models import MemoryEntry
 from jarvis.observability.logger import get_logger
 
@@ -52,15 +54,17 @@ class VectorMemory:
         self.collection.add(
             ids=[entry.id],
             documents=[entry.content],
-            metadatas=[{
-                "importance_score": entry.importance_score,
-                "ttl_hours": entry.ttl_hours or -1,
-                "created_at": entry.created_at,
-                "source": entry.source,
-                "creator_flag": entry.creator_flag,
-                "permanent_flag": entry.permanent_flag,
-                **{k: str(v) for k, v in entry.metadata.items()},
-            }],
+            metadatas=[
+                {
+                    "importance_score": entry.importance_score,
+                    "ttl_hours": entry.ttl_hours or -1,
+                    "created_at": entry.created_at,
+                    "source": entry.source,
+                    "creator_flag": entry.creator_flag,
+                    "permanent_flag": entry.permanent_flag,
+                    **{k: str(v) for k, v in entry.metadata.items()},
+                }
+            ],
         )
         return True
 
@@ -75,12 +79,14 @@ class VectorMemory:
         if results and results["documents"]:
             for i, doc in enumerate(results["documents"][0]):
                 meta = results["metadatas"][0][i] if results["metadatas"] else {}
-                entries.append({
-                    "id": results["ids"][0][i],
-                    "content": doc,
-                    "metadata": meta,
-                    "distance": results["distances"][0][i] if results["distances"] else None,
-                })
+                entries.append(
+                    {
+                        "id": results["ids"][0][i],
+                        "content": doc,
+                        "metadata": meta,
+                        "distance": results["distances"][0][i] if results["distances"] else None,
+                    }
+                )
         return entries
 
     def mark_permanent(self, memory_id: str):
@@ -114,7 +120,7 @@ class VectorMemory:
         all_data = self.collection.get(include=["metadatas"])
         if not all_data["ids"]:
             return 0
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         to_delete = []
         for i, mid in enumerate(all_data["ids"]):
             meta = all_data["metadatas"][i]
@@ -149,17 +155,30 @@ class VectorMemory:
         for i, mid in enumerate(all_data["ids"]):
             doc = all_data["documents"][i] if all_data["documents"] else ""
             meta = all_data["metadatas"][i] if all_data["metadatas"] else {}
-            entries.append({
-                "id": mid,
-                "content": doc,
-                "importance_score": float(meta.get("importance_score", 0)),
-                "source": meta.get("source", ""),
-                "permanent": meta.get("permanent_flag") in (True, "True", "true"),
-                "created_at": meta.get("created_at", ""),
-                "ttl_hours": int(meta.get("ttl_hours", -1)),
-                "metadata": {k: v for k, v in meta.items()
-                             if k not in ("importance_score", "source", "permanent_flag", "created_at", "ttl_hours", "creator_flag")},
-            })
+            entries.append(
+                {
+                    "id": mid,
+                    "content": doc,
+                    "importance_score": float(meta.get("importance_score", 0)),
+                    "source": meta.get("source", ""),
+                    "permanent": meta.get("permanent_flag") in (True, "True", "true"),
+                    "created_at": meta.get("created_at", ""),
+                    "ttl_hours": int(meta.get("ttl_hours", -1)),
+                    "metadata": {
+                        k: v
+                        for k, v in meta.items()
+                        if k
+                        not in (
+                            "importance_score",
+                            "source",
+                            "permanent_flag",
+                            "created_at",
+                            "ttl_hours",
+                            "creator_flag",
+                        )
+                    },
+                }
+            )
         # Sort by importance descending
         entries.sort(key=lambda e: e["importance_score"], reverse=True)
         return entries

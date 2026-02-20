@@ -201,8 +201,10 @@ def build_chat_system_prompt(directive: str, budget_status: dict) -> str:
 
     sections.append(f"\n## CURRENT DIRECTIVE\n{directive}")
 
-    sections.append(f"\n## BUDGET STATUS")
-    sections.append(f"- Remaining: ${budget_status.get('remaining', 100.0):.2f} of ${budget_status.get('monthly_cap', 100.0):.2f}")
+    sections.append("\n## BUDGET STATUS")
+    sections.append(
+        f"- Remaining: ${budget_status.get('remaining', 100.0):.2f} of ${budget_status.get('monthly_cap', 100.0):.2f}"
+    )
 
     sections.append(
         "\n## CHAT INSTRUCTIONS\n"

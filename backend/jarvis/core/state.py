@@ -1,9 +1,8 @@
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from jarvis.models import JarvisState
+from datetime import UTC, datetime
+
 from jarvis.config import settings
+from jarvis.models import JarvisState
 from jarvis.observability.logger import get_logger
-from datetime import datetime, timezone
 
 log = get_logger("state")
 
@@ -65,14 +64,14 @@ class StateManager:
                     state.current_goals = value
                 elif key == "iteration":
                     state.loop_iteration = value
-            state.last_heartbeat = datetime.now(timezone.utc)
+            state.last_heartbeat = datetime.now(UTC)
             await session.commit()
 
     async def heartbeat(self):
         async with self.session_factory() as session:
             state = await session.get(JarvisState, 1)
             if state:
-                state.last_heartbeat = datetime.now(timezone.utc)
+                state.last_heartbeat = datetime.now(UTC)
                 await session.commit()
 
     async def increment_iteration(self) -> int:
@@ -80,7 +79,7 @@ class StateManager:
             state = await session.get(JarvisState, 1)
             if state:
                 state.loop_iteration += 1
-                state.last_heartbeat = datetime.now(timezone.utc)
+                state.last_heartbeat = datetime.now(UTC)
                 await session.commit()
                 return state.loop_iteration
         return 0

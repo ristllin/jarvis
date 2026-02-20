@@ -8,12 +8,12 @@ The agent runs a loop:
   3. We execute the action and feed the result back
   4. Repeat until LLM says "done" or max turns reached
 """
+
+import asyncio
+import json
 import os
 import re
-import json
-import asyncio
-import subprocess
-from datetime import datetime, timezone
+
 from jarvis.observability.logger import get_logger
 
 log = get_logger("coding_agent")
@@ -110,7 +110,10 @@ class CodingAgent:
 
         messages = [
             {"role": "system", "content": sys_prompt},
-            {"role": "user", "content": f"## Task\n{task}\n\nBegin by exploring relevant files, then make the changes needed."},
+            {
+                "role": "user",
+                "content": f"## Task\n{task}\n\nBegin by exploring relevant files, then make the changes needed.",
+            },
         ]
 
         changes_made = []
@@ -131,7 +134,9 @@ class CodingAgent:
                 if not action:
                     # LLM didn't return valid JSON — treat as thinking, ask to continue
                     messages.append({"role": "assistant", "content": response.content})
-                    messages.append({"role": "user", "content": "Please respond with a JSON action. Use 'done' if you're finished."})
+                    messages.append(
+                        {"role": "user", "content": "Please respond with a JSON action. Use 'done' if you're finished."}
+                    )
                     continue
 
                 action_name = action.get("action", "")
@@ -144,7 +149,11 @@ class CodingAgent:
                         self.blob.store(
                             event_type="coding_agent_done",
                             content=f"Summary: {summary}\nTurns: {turn + 1}\nFiles modified: {list(files_modified)}",
-                            metadata={"turns": turn + 1, "files_modified": list(files_modified), "changes": len(changes_made)},
+                            metadata={
+                                "turns": turn + 1,
+                                "files_modified": list(files_modified),
+                                "changes": len(changes_made),
+                            },
                         )
                     return {
                         "success": True,
@@ -174,7 +183,9 @@ class CodingAgent:
 
             except Exception as e:
                 log.error("coding_agent_error", turn=turn, error=str(e))
-                messages.append({"role": "user", "content": f"Error occurred: {str(e)}\nPlease continue or use 'done' if finished."})
+                messages.append(
+                    {"role": "user", "content": f"Error occurred: {e!s}\nPlease continue or use 'done' if finished."}
+                )
 
         # Hit max turns
         log.warning("coding_agent_max_turns", max_turns=max_turns)
@@ -213,7 +224,7 @@ class CodingAgent:
         # Try to find JSON block
         try:
             # Look for ```json ... ``` blocks
-            match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', content, re.DOTALL)
+            match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", content, re.DOTALL)
             if match:
                 return json.loads(match.group(1))
         except (json.JSONDecodeError, AttributeError):
@@ -236,24 +247,29 @@ class CodingAgent:
         try:
             if name == "read_file":
                 return self._prim_read_file(action.get("path", ""), action.get("offset"), action.get("limit"))
-            elif name == "write_file":
+            if name == "write_file":
                 return self._prim_write_file(action.get("path", ""), action.get("content", ""))
-            elif name == "str_replace":
-                return self._prim_str_replace(action.get("path", ""), action.get("old_string", ""), action.get("new_string", ""))
-            elif name == "insert_after":
-                return self._prim_insert_after(action.get("path", ""), action.get("after", ""), action.get("content", ""))
-            elif name == "grep":
-                return await self._prim_grep(action.get("pattern", ""), action.get("path", working_dir), action.get("glob"))
-            elif name == "list_dir":
+            if name == "str_replace":
+                return self._prim_str_replace(
+                    action.get("path", ""), action.get("old_string", ""), action.get("new_string", "")
+                )
+            if name == "insert_after":
+                return self._prim_insert_after(
+                    action.get("path", ""), action.get("after", ""), action.get("content", "")
+                )
+            if name == "grep":
+                return await self._prim_grep(
+                    action.get("pattern", ""), action.get("path", working_dir), action.get("glob")
+                )
+            if name == "list_dir":
                 return self._prim_list_dir(action.get("path", working_dir))
-            elif name == "shell":
+            if name == "shell":
                 return await self._prim_shell(action.get("command", ""), working_dir)
-            elif name == "delete_file":
+            if name == "delete_file":
                 return self._prim_delete_file(action.get("path", ""))
-            else:
-                return f"Unknown action: {name}"
+            return f"Unknown action: {name}"
         except Exception as e:
-            return f"Error executing {name}: {str(e)}"
+            return f"Error executing {name}: {e!s}"
 
     def _validate_path(self, path: str) -> str | None:
         real = os.path.realpath(path)
@@ -270,7 +286,7 @@ class CodingAgent:
             return err
         if not os.path.isfile(path):
             return f"File not found: {path}"
-        with open(path, "r") as f:
+        with open(path) as f:
             lines = f.readlines()
         total = len(lines)
         start = (offset or 1) - 1
@@ -300,7 +316,7 @@ class CodingAgent:
             return err
         if not os.path.isfile(path):
             return f"File not found: {path}"
-        with open(path, "r") as f:
+        with open(path) as f:
             content = f.read()
         count = content.count(old_string)
         if count == 0:
@@ -319,7 +335,7 @@ class CodingAgent:
             return err
         if not os.path.isfile(path):
             return f"File not found: {path}"
-        with open(path, "r") as f:
+        with open(path) as f:
             file_content = f.read()
         if after not in file_content:
             return f"ERROR: anchor string not found in {path}"
@@ -342,7 +358,8 @@ class CodingAgent:
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=15)
             output = stdout.decode("utf-8", errors="replace")
@@ -352,7 +369,7 @@ class CodingAgent:
             if len(lines) > 50:
                 return "\n".join(lines[:50]) + f"\n... ({len(lines)} total matches, showing first 50)"
             return output.strip()
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return "grep timed out"
         except Exception as e:
             return f"grep error: {e}"
@@ -374,7 +391,8 @@ class CodingAgent:
         try:
             proc = await asyncio.create_subprocess_shell(
                 command,
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
                 cwd=working_dir,
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
@@ -388,7 +406,7 @@ class CodingAgent:
             if len(result) > 8000:
                 result = result[:8000] + "\n[...truncated...]"
             return result
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return "Command timed out (60s)"
         except Exception as e:
             return f"Shell error: {e}"

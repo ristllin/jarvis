@@ -8,10 +8,10 @@ MAX_CONTEXT_TOKENS = 120_000
 
 # Default memory retrieval config
 DEFAULT_MEMORY_CONFIG = {
-    "retrieval_count": 10,           # How many vector memories to inject per iteration
-    "max_context_tokens": 120_000,   # Max working context size in tokens
-    "decay_factor": 0.95,            # Importance decay per maintenance cycle
-    "relevance_threshold": 0.0,      # Min relevance score to include (0 = include all)
+    "retrieval_count": 10,  # How many vector memories to inject per iteration
+    "max_context_tokens": 120_000,  # Max working context size in tokens
+    "decay_factor": 0.95,  # Importance decay per maintenance cycle
+    "relevance_threshold": 0.0,  # Min relevance score to include (0 = include all)
 }
 
 

@@ -2,17 +2,16 @@ import asyncio
 import json
 import traceback
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from jarvis.core.state import StateManager
-from jarvis.core.planner import Planner
-from jarvis.core.executor import Executor
+from datetime import UTC, datetime
+
 from jarvis.budget.tracker import BudgetTracker
+from jarvis.core.executor import Executor
+from jarvis.core.planner import Planner
+from jarvis.core.state import StateManager
 from jarvis.memory.blob import BlobStorage
-from jarvis.memory.vector import VectorMemory
 from jarvis.memory.models import MemoryEntry
-from jarvis.safety.validator import SafetyValidator
-from jarvis.config import settings
-from jarvis.observability.logger import get_logger, FileLogger
+from jarvis.memory.vector import VectorMemory
+from jarvis.observability.logger import FileLogger, get_logger
 
 log = get_logger("core_loop")
 
@@ -91,7 +90,7 @@ class CoreLoop:
         try:
             await asyncio.wait_for(self._wake_event.wait(), timeout=seconds)
             log.info("sleep_interrupted", slept_less_than=seconds)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass  # Normal — full sleep completed
 
     def _build_results_summary(self, results: list[dict]) -> str:
@@ -219,9 +218,7 @@ class CoreLoop:
                 if actions:
                     results = await self.executor.execute_plan(plan)
 
-                    await self._broadcast_state("executing",
-                                                actions_count=len(actions),
-                                                results_count=len(results))
+                    await self._broadcast_state("executing", actions_count=len(actions), results_count=len(results))
 
                 # 5b. Feed execution results back into working memory
                 if results:
@@ -404,12 +401,10 @@ class CoreLoop:
                 )
 
             except Exception as e:
-                log.error("iteration_error",
-                          error=str(e),
-                          traceback=traceback.format_exc())
+                log.error("iteration_error", error=str(e), traceback=traceback.format_exc())
                 self.blob.store(
                     event_type="error",
-                    content=f"Loop error: {str(e)}\n{traceback.format_exc()}",
+                    content=f"Loop error: {e!s}\n{traceback.format_exc()}",
                 )
                 await self._broadcast_state("error", error=str(e))
 
@@ -422,7 +417,7 @@ class CoreLoop:
             msg = {
                 "type": "state_update",
                 "status": status,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 **extra,
             }
             if asyncio.iscoroutinefunction(self.broadcast):
