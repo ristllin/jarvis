@@ -33,6 +33,8 @@ def get_app_state():
 
 @router.get("/status")
 async def get_status():
+    from jarvis.version import __version__
+
     state = get_app_state()
     current = await state["state_manager"].get_state()
     core_loop = state.get("core_loop")
@@ -48,6 +50,7 @@ async def get_status():
         }
     return {
         "status": "running" if not current.get("is_paused") else "paused",
+        "version": __version__,
         **current,
         **sleep_info,
     }

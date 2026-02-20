@@ -74,7 +74,9 @@ export default function App() {
       <aside className="w-56 bg-gray-900 border-r border-gray-800 flex flex-col">
         <div className="p-4 border-b border-gray-800">
           <h1 className="text-xl font-bold text-jarvis-400 tracking-wide">JARVIS</h1>
-          <p className="text-xs text-gray-500 mt-1">v0.1.1 — Autonomous AI</p>
+          <p className="text-xs text-gray-500 mt-1">
+            v{status?.version ?? '—'} — Autonomous AI
+          </p>
         </div>
         <nav className="flex-1 py-2">
           {tabs.map((t) => (

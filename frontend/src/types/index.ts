@@ -1,5 +1,6 @@
 export interface JarvisStatus {
   status: string
+  version?: string
   directive: string
   goals: string[]
   short_term_goals: string[]

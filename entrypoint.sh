@@ -62,7 +62,7 @@ __pycache__/
 GITIGNORE
     git init
     git add -A
-    git commit -m "JARVIS v0.1.1 — initial baseline" --allow-empty
+    git commit -m "JARVIS v0.2.0 — initial baseline" --allow-empty
     git tag baseline
 
     # Configure GitHub remote if GITHUB_REPO is set
