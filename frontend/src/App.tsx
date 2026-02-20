@@ -11,10 +11,11 @@ import { DirectiveEditor } from './components/DirectiveEditor'
 import { ControlBar } from './components/ControlBar'
 import { ChatPanel } from './components/ChatPanel'
 import { AnalyticsPanel } from './components/AnalyticsPanel'
+import { IterationDebugPanel } from './components/IterationDebugPanel'
 import type { JarvisStatus, BudgetStatus, MemoryStats } from './types'
-import { Bot, DollarSign, Brain, ScrollText, Wrench, Cpu, FileEdit, MessageCircle, BarChart3 } from 'lucide-react'
+import { Bot, DollarSign, Brain, ScrollText, Wrench, Cpu, FileEdit, MessageCircle, BarChart3, ListChecks } from 'lucide-react'
 
-type Tab = 'dashboard' | 'chat' | 'analytics' | 'budget' | 'memory' | 'logs' | 'tools' | 'models' | 'directive'
+type Tab = 'dashboard' | 'chat' | 'analytics' | 'budget' | 'memory' | 'logs' | 'tools' | 'models' | 'iterations' | 'directive'
 
 const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: <Bot size={18} /> },
@@ -25,6 +26,7 @@ const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'logs', label: 'Logs', icon: <ScrollText size={18} /> },
   { id: 'tools', label: 'Tools', icon: <Wrench size={18} /> },
   { id: 'models', label: 'Models', icon: <Cpu size={18} /> },
+  { id: 'iterations', label: 'Iterations', icon: <ListChecks size={18} /> },
   { id: 'directive', label: 'Directive', icon: <FileEdit size={18} /> },
 ]
 
