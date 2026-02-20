@@ -82,14 +82,47 @@ docker compose logs -f jarvis
 curl -s http://localhost:8000/api/status | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])"
 ```
 
-### Important: code lives in two places
+### Important: code lives in multiple places
 
-| Directory | Purpose |
-|-----------|---------|
-| `jarvis/` | Development source (edit files here) |
-| `backend/jarvis/` | Docker build context (auto-synced by `build.sh`) |
+| Location | Purpose |
+|----------|---------|
+| `jarvis/` | Development source (synced to backend by `build.sh`) |
+| `backend/jarvis/` | Docker build context (what the image copies) |
+| `data/code/backend/` | **Persistent backup** — restored to `/app/` on every container boot |
 
-Always edit `jarvis/` and run `./build.sh` to deploy. Never edit `backend/jarvis/` directly.
+The entrypoint restores `data/code/backend/` → `/app/` on startup. If `data/code/` has stale code, the running container will use it even after a rebuild.
+
+### Syncing Git → running JARVIS (when you get stuck on old code)
+
+After pulling from git (or making local changes), the running container may still use old code because `data/code/` persists across restarts. Use this to force the latest code into the running version:
+
+```bash
+# 1. Ensure backend/ has the code you want (build.sh syncs jarvis/ → backend/)
+./build.sh --sync-only
+
+# 2. Copy backend code into the persistent data backup
+rsync -a --delete --exclude='.git' --exclude='__pycache__' backend/jarvis/ data/code/backend/jarvis/
+
+# 3. Restart so the entrypoint uses the updated data
+docker compose restart jarvis
+
+# 4. Verify (e.g. new tools should appear)
+curl -sf http://localhost:8000/api/tool-status | python3 -c "import sys,json; print([t['name'] for t in json.load(sys.stdin).get('tools',[])])"
+```
+
+**If that still doesn't work** (e.g. entrypoint overwrites with old image merge):
+
+```bash
+# Clear the stored image hash so the entrypoint treats this as a fresh image
+rm -f data/code/.image_hash data/code/.needs_revert
+
+# Rebuild the image (compose has no build config — use direct docker build)
+docker build -t jarvis:latest -f Dockerfile .
+
+# Sync backend → data again, then restart
+rsync -a --delete --exclude='.git' --exclude='__pycache__' backend/jarvis/ data/code/backend/jarvis/
+docker compose down jarvis && docker compose up -d jarvis
+```
 
 ### Preserving data across rebuilds
 
@@ -100,9 +133,10 @@ Only `docker compose down -v` destroys volumes — **never run this** unless you
 
 | Symptom | Fix |
 |---------|-----|
-| Wrong version in UI | `./build.sh --no-cache` |
+| Stuck on old code / new tools missing | See **Syncing Git → running JARVIS** above. Sync `backend/jarvis/` → `data/code/backend/jarvis/`, then restart. |
+| Wrong version in UI | `./build.sh --no-cache` (or `docker build -t jarvis:latest -f Dockerfile .`) |
 | Backend unhealthy | `docker compose logs jarvis` — look for import errors |
-| Stuck on old code | `rm -f data/code/.image_hash && ./build.sh` |
+| Entrypoint keeps reverting | `rm -f data/code/.image_hash data/code/.needs_revert`, sync backend → data, rebuild image, restart |
 | Frontend 502 | Wait 15s for Vite to start, or check `docker compose exec jarvis cat /tmp/vite.log` |
 
 ## Remote Access (ngrok)
@@ -216,6 +250,8 @@ All persistent data is stored under `./data/` (mounted into the container at `/d
 
 ```
 data/
+├── code/       # Persistent backup of JARVIS source — restored to /app/ on boot
+│   └── backend/  # Sync git changes here to update running code (see "Syncing Git → running JARVIS")
 ├── blob/       # Append-only logs of all messages, LLM calls, tool outputs
 ├── chroma/     # ChromaDB persistent vector storage
 ├── logs/       # Structured JSON log files
