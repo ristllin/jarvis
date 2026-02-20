@@ -90,3 +90,9 @@ All notable changes from JARVIS self-modifications.
 
 ### Files changed
   - jarvis/tools/registry.py
+## [0.2.8] - 2026-02-20
+
+**Commit:** Deploy fixed crypto_trading v0.2.7
+
+### Files changed
+
