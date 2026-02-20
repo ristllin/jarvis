@@ -39,13 +39,22 @@ repos:
         args: [--branch, main]
         stages: [pre-push]
 
-  # ── Frontend linting (requires node — skips gracefully if unavailable) ─
+  # ── Frontend checks (TypeScript + ESLint) ───────────────────────────────
+  # tsc catches missing imports, type errors, and compile failures.
+  # eslint catches code quality issues. Both fall back to Docker if no local node.
   - repo: local
     hooks:
+      - id: tsc-check
+        name: tsc (type-check frontend)
+        language: system
+        entry: ./scripts/pre-commit-tsc.sh
+        files: ^frontend/src/.*\.(ts|tsx)$
+        types: [file]
+        pass_filenames: false
       - id: eslint
         name: eslint (frontend)
         language: system
-        entry: bash -c 'command -v npx >/dev/null 2>&1 || { echo "Skipping eslint (node not installed locally)"; exit 0; }; cd frontend && npx eslint --max-warnings 0 "$@"' --
+        entry: ./scripts/pre-commit-eslint.sh
         files: ^frontend/src/.*\.(ts|tsx)$
         types: [file]
         pass_filenames: true

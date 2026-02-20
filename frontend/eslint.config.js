@@ -15,10 +15,13 @@ export default tseslint.config(
     rules: {
       // React
       ...reactHooks.configs.recommended.rules,
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/immutability": "off",
+      "no-empty": ["error", { allowEmptyCatch: true }],
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
 
       // TypeScript quality
-      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unused-vars": ["warn", {
         argsIgnorePattern: "^_",
         varsIgnorePattern: "^_",

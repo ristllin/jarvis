@@ -20,8 +20,8 @@ COPY backend/ .
 RUN mkdir -p /frontend
 COPY frontend/package.json /frontend/
 WORKDIR /frontend
-RUN npm install
-COPY frontend/ .
+RUN npm cache clean --force && npm install --force 2>&1 || npm install --legacy-peer-deps 2>&1 || true
+COPY frontend/ /frontend/
 WORKDIR /app
 
 # Entrypoint

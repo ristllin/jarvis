@@ -126,7 +126,7 @@ export function ChatPanel({ lastMessage }: ChatPanelProps) {
                     {new Date(msg.timestamp).toLocaleTimeString()}
                   </span>
                 )}
-                {msg.role === 'jarvis' && msg.metadata?.model && (
+                {msg.role === 'jarvis' && msg.metadata?.model != null && (
                   <span className="text-[10px] opacity-40">
                     {String(msg.metadata.model)}
                   </span>
