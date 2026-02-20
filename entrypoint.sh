@@ -85,10 +85,9 @@ else
     if [ "$IMAGE_HASH" != "$STORED_HASH" ]; then
         echo "[entrypoint] IMAGE UPDATE DETECTED — merging new image files into backup"
 
-        # Merge new/updated files from image into backup, but preserve JARVIS's modifications
-        # Strategy: rsync with --ignore-existing for safety, then force-update known new files
-        rsync -a --ignore-existing /app/ "$CODE_BACKUP/backend/" --exclude='.git' --exclude='__pycache__' 2>/dev/null || \
-            cp -an /app/. "$CODE_BACKUP/backend/" 2>/dev/null || true
+        # Copy ALL image files into backup (developer image takes precedence over JARVIS modifications)
+        rsync -a /app/ "$CODE_BACKUP/backend/" --exclude='.git' --exclude='__pycache__' 2>/dev/null || \
+            cp -a /app/. "$CODE_BACKUP/backend/" 2>/dev/null || true
 
         # Force-sync entire frontend from image (JARVIS doesn't self-modify frontend)
         rsync -a /frontend/ "$CODE_BACKUP/frontend/" --exclude='node_modules' --exclude='.git' 2>/dev/null || \
