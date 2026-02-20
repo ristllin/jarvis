@@ -22,7 +22,7 @@ class MetricsCollector:
         async with self.session_factory() as session:
             tool_count = await session.scalar(select(func.count(ToolUsageLog.id)))
             tool_success = await session.scalar(
-                select(func.count(ToolUsageLog.id)).where(ToolUsageLog.success == True)
+                select(func.count(ToolUsageLog.id)).where(ToolUsageLog.success.is_(True))
             )
             total_cost = await session.scalar(select(func.sum(BudgetUsage.cost_usd))) or 0.0
 

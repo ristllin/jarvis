@@ -22,8 +22,8 @@ export function NewsPanel({ limit = 5 }: NewsPanelProps) {
   const fetchNews = async () => {
     try {
       setLoading(true)
-      const response = await api.get('/news')
-      setNews(response.data.news || [])
+      const response = await api.getNews()
+      setNews(response.news || [])
       setError(null)
     } catch (err) {
       setError('Failed to fetch news')

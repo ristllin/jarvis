@@ -1,8 +1,10 @@
 import json
 import os
-from datetime import datetime, timezone
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
-from sqlalchemy import select, desc
+from datetime import UTC, datetime, timedelta, timezone
+
+from fastapi import APIRouter
+from sqlalchemy import desc, select
+
 from jarvis.api.schemas import (
     DirectiveUpdate, MemoryMarkPermanent, BudgetOverride,
     ChatRequest, ChatResponse, GoalsUpdate,
@@ -78,6 +80,26 @@ async def delete_vector_memory(memory_id: str):
     state = get_app_state()
     state["vector"].delete_memory(memory_id)
     return {"ok": True}
+
+
+@router.post("/memory/vector/flush")
+async def flush_vector_memory(keep_permanent: bool = True):
+    """Flush vector memory. If keep_permanent=True, only deletes non-permanent entries."""
+    state = get_app_state()
+    vector = state["vector"]
+    if keep_permanent:
+        count = vector.flush_non_permanent()
+    else:
+        count = vector.flush_all()
+    return {"ok": True, "deleted": count, "kept_permanent": keep_permanent}
+
+
+@router.post("/memory/vector/deduplicate")
+async def deduplicate_vector_memory():
+    """Run deduplication on vector memory."""
+    state = get_app_state()
+    removed = state["vector"].deduplicate()
+    return {"ok": True, "duplicates_removed": removed}
 
 
 @router.get("/memory/blob")
@@ -222,7 +244,13 @@ async def get_news():
     from jarvis.tools.news_monitor import NewsMonitorTool
     news_tool = NewsMonitorTool()
     result = await news_tool.execute(query="latest news", max_results=5)
-    return {"news": result.output}
+    if not result.success:
+        return {"news": [], "error": result.error}
+    try:
+        articles = json.loads(result.output) if isinstance(result.output, str) else result.output
+    except (json.JSONDecodeError, TypeError):
+        articles = []
+    return {"news": articles}
 
 
 # ── Provider balance management ───────────────────────────────────────────
@@ -397,7 +425,7 @@ async def get_analytics(range: str = "24h"):
     Range: 1h, 6h, 24h, 7d, 30d
     Returns buckets with: cost, tokens, model calls, tool calls, errors.
     """
-    from datetime import timedelta
+    
     from sqlalchemy import text
 
     state = get_app_state()
@@ -570,6 +598,126 @@ async def get_analytics(range: str = "24h"):
         },
         "series": chart_series,
     }
+
+
+@router.get("/tool-status")
+async def get_tool_status():
+    """Get status and recent usage stats for all registered tools."""
+    from sqlalchemy import text
+
+    state = get_app_state()
+    tools_registry = state["tools"]
+    session_factory = state["session_factory"]
+
+    # Get all registered tool names and schemas
+    tool_schemas = tools_registry.get_tool_schemas()
+    tool_names = tools_registry.get_tool_names()
+
+    # Query recent usage stats per tool from tool_usage_log
+    since_str = (datetime.now(UTC) - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+
+    async with session_factory() as session:
+        rows = await session.execute(
+            text("""
+                SELECT
+                    tool_name,
+                    COUNT(*) as total_calls,
+                    SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successful,
+                    SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as failed,
+                    AVG(duration_ms) as avg_duration_ms,
+                    MAX(timestamp) as last_used
+                FROM tool_usage_log
+                WHERE timestamp >= :since
+                GROUP BY tool_name
+            """),
+            {"since": since_str},
+        )
+        usage_data = rows.fetchall()
+
+    # Build a lookup of usage stats by tool name
+    usage_map = {}
+    for row in usage_data:
+        tool_name, total, successful, failed, avg_dur, last_used = row
+        usage_map[tool_name] = {
+            "total_calls_24h": total or 0,
+            "successful_24h": successful or 0,
+            "failed_24h": failed or 0,
+            "avg_duration_ms": round(avg_dur, 1) if avg_dur else None,
+            "last_used": last_used,
+        }
+
+    # Combine tool schemas with usage stats
+    tools_status = []
+    for schema in tool_schemas:
+        name = schema["name"]
+        usage = usage_map.get(
+            name,
+            {
+                "total_calls_24h": 0,
+                "successful_24h": 0,
+                "failed_24h": 0,
+                "avg_duration_ms": None,
+                "last_used": None,
+            },
+        )
+        tools_status.append(
+            {
+                "name": name,
+                "description": schema.get("description", ""),
+                "registered": True,
+                **usage,
+            }
+        )
+
+    return {
+        "total_tools": len(tool_names),
+        "tools": tools_status,
+    }
+
+
+@router.get("/iteration-history")
+async def get_iteration_history(limit: int = 20):
+    """Return recent iteration plans from blob storage for the debug panel."""
+    state = get_app_state()
+    blob = state["blob"]
+    entries = blob.read_filtered(event_type="plan", limit=limit)
+    iterations = []
+    for entry in entries:
+        content = entry.get("content", "")
+        metadata = entry.get("metadata", {})
+        try:
+            plan_data = json.loads(content) if isinstance(content, str) else content
+        except (json.JSONDecodeError, TypeError):
+            plan_data = {}
+
+        actions = plan_data.get("actions", [])
+        action_details = []
+        for a in actions:
+            action_details.append(
+                {
+                    "tool": a.get("tool", "?"),
+                    "tier": a.get("tier", "default"),
+                    "parameters_keys": list(a.get("parameters", {}).keys()),
+                }
+            )
+
+        iterations.append(
+            {
+                "timestamp": entry.get("timestamp", ""),
+                "iteration": metadata.get("iteration"),
+                "model": metadata.get("model", plan_data.get("_response_model", "")),
+                "provider": metadata.get("provider", plan_data.get("_response_provider", "")),
+                "tokens": metadata.get("tokens", plan_data.get("_response_tokens", 0)),
+                "thinking": plan_data.get("thinking", "")[:500],
+                "status_message": plan_data.get("status_message", ""),
+                "chat_reply": plan_data.get("chat_reply", "")[:300] if plan_data.get("chat_reply") else None,
+                "sleep_seconds": plan_data.get("sleep_seconds"),
+                "action_count": len(actions),
+                "actions": action_details,
+            }
+        )
+
+    return {"iterations": iterations}
 
 
 @router.get("/health")

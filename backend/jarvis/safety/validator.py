@@ -25,7 +25,7 @@ class SafetyValidator:
         params = action.get("parameters", {})
 
         # Check for rule violations in any text content
-        for key, value in params.items():
+        for value in params.values():
             if isinstance(value, str):
                 violations = IMMUTABLE_RULES.contains_violation(value)
                 if violations:

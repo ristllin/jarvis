@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { api } from '../api/client'
 import type { JarvisStatus, BudgetStatus, MemoryStats, WSMessage } from '../types'
 import { Activity, Target, Zap, Database, DollarSign, Clock, Flag, Compass, Star, Timer, Bell } from 'lucide-react'
-, NewsPanel
+import { NewsPanel } from './NewsPanel'
 
 interface Props {
   status: JarvisStatus | null

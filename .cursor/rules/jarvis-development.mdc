@@ -1,0 +1,50 @@
+---
+description: JARVIS development workflow, testing, and deployment procedures
+globs: **/*.py,**/*.tsx,**/*.ts
+alwaysApply: false
+---
+
+# JARVIS Development Guide
+
+## Adding a New Tool
+1. Create `backend/jarvis/tools/my_tool.py` inheriting from `Tool`
+2. Implement `execute(**kwargs) -> ToolResult` and `get_schema() -> dict`
+3. Import and register in `backend/jarvis/tools/registry.py` `_register_defaults()`
+4. Sync to `jarvis/` (or edit both)
+5. Test: `python -c "from jarvis.tools.my_tool import MyTool; print('OK')"`
+
+## Adding a New Listener
+Follow the pattern from `email_listener.py` or `telegram_listener.py`:
+1. Create `backend/jarvis/core/my_listener.py`
+2. Add config flags to `config.py`
+3. Start in `main.py` lifespan
+4. Enqueue messages via `core_loop.enqueue_chat()`
+
+## Self-Modification Workflow
+1. `code_architect` (tier-1) → produces integration plan
+2. `coding_agent` with `approved_plan` (free Devstral) → implements
+3. `self_modify action=diff` → verify
+4. `self_modify action=commit message='...'` → version
+5. `self_modify action=push` → backup
+
+## Testing
+- `self_analysis check=functional` — end-to-end round-trip tests
+- `self_analysis check=all` — config checks
+- Import validation: `python -c "import jarvis.module"`
+- Unit tests in `jarvis/tests/`
+
+## Frontend Changes
+- Edit `frontend/src/components/` for UI
+- API client methods in `frontend/src/api/client.ts`
+- Types in `frontend/src/types/index.ts`
+- All panels stay mounted (CSS hidden) to preserve state
+
+## Key Files to Know
+- `core/loop.py` — main iteration loop, chat processing
+- `core/planner.py` — LLM planning, system prompt injection
+- `safety/prompt_builder.py` — system prompt construction
+- `tools/registry.py` — tool registration and execution
+- `llm/router.py` — tier-based model routing
+- `memory/vector.py` — ChromaDB vector memory with deduplication
+- `config.py` — all settings (env var backed)
+- `main.py` — FastAPI app lifespan, subsystem init

@@ -1,0 +1,10 @@
+# ngrok Basic Auth — protects the tunnel before requests reach your app.
+# Username: ristlin
+# Password: cyNmFLFDh1dSBqrbZw7h!
+# Add this file to .gitignore — it contains credentials.
+on_http_request:
+  - actions:
+      - type: basic-auth
+        config:
+          credentials:
+            - ristlin:cyNmFLFDh1dSBqrbZw7h!

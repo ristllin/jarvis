@@ -4,10 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.sessions import SessionMiddleware
 
-from jarvis.api.auth import router as auth_router
-from jarvis.api.auth_middleware import AuthMiddleware
 from jarvis.api.routes import router as api_router
 from jarvis.api.websocket import ws_manager
 from jarvis.budget.tracker import BudgetTracker
@@ -17,6 +14,7 @@ from jarvis.core.executor import Executor
 from jarvis.core.loop import CoreLoop
 from jarvis.core.planner import Planner
 from jarvis.core.state import StateManager
+from jarvis.core.telegram_listener import TelegramListener
 from jarvis.core.watchdog import Watchdog
 from jarvis.database import Base, async_session, engine
 from jarvis.llm.router import LLMRouter
@@ -26,7 +24,6 @@ from jarvis.memory.working import WorkingMemory
 from jarvis.observability.logger import FileLogger, get_logger, setup_logging
 from jarvis.safety.validator import SafetyValidator
 from jarvis.tools.registry import ToolRegistry
-from jarvis.version import __version__
 
 setup_logging()
 log = get_logger("main")
@@ -50,7 +47,6 @@ async def lifespan(app: FastAPI):
             ("short_term_goals", "TEXT DEFAULT '[]'"),
             ("mid_term_goals", "TEXT DEFAULT '[]'"),
             ("long_term_goals", "TEXT DEFAULT '[]'"),
-            ("short_term_memories", "TEXT DEFAULT '[]'"),
         ]:
             try:
                 await conn.execute(__import__("sqlalchemy").text(f"ALTER TABLE jarvis_state ADD COLUMN {col} {coldef}"))
@@ -86,15 +82,15 @@ async def lifespan(app: FastAPI):
 
     validator = SafetyValidator()
     router = LLMRouter(budget, blob_storage=blob)
-    tools = ToolRegistry(
-        vector, validator, budget_tracker=budget, llm_router=router, blob_storage=blob, working=working
-    )
-    log.info("tools_available", tools=sorted(tools.get_tool_names()))
+    tools = ToolRegistry(vector, validator, budget_tracker=budget, llm_router=router, blob_storage=blob)
     state_manager = StateManager(async_session)
     planner = Planner(router, working, vector)
     executor = Executor(tools, blob, file_logger, session_factory=async_session)
 
-    # 3. Configure git inside container
+    # 3. Seed foundational skills
+    _seed_skills(data_dir)
+
+    # 3b. Configure git inside container
     await _configure_git()
 
     # 4. Store in shared state for API access
@@ -142,6 +138,15 @@ async def lifespan(app: FastAPI):
     email_listener.start()
     app_state["email_listener"] = email_listener
 
+    # 6c. Start Telegram listener (disabled by default — enable via TELEGRAM_LISTENER_ENABLED=true)
+    telegram_listener = TelegramListener(
+        enqueue_fn=lambda msg: core_loop.enqueue_chat(msg, source="telegram"),
+        interval_seconds=settings.telegram_polling_interval,
+    )
+    telegram_listener.start()
+    core_loop.set_telegram_listener(telegram_listener)
+    app_state["telegram_listener"] = telegram_listener
+
     # 7. Start watchdog
     watchdog = Watchdog(state_manager, settings.heartbeat_timeout_seconds)
     watchdog.set_loop_task(loop_task, lambda: _restart_loop(core_loop))
@@ -166,7 +171,32 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         log.warning("email_listener_stop_failed", error=str(e))
 
+    # Stop Telegram listener
+    try:
+        tg_listener = app_state.get("telegram_listener")
+        if tg_listener:
+            await tg_listener.stop()
+    except Exception as e:
+        log.warning("telegram_listener_stop_failed", error=str(e))
+
     await engine.dispose()
+
+
+def _seed_skills(data_dir: str):
+    """Copy bundled skills to /data/skills/ if they don't exist yet."""
+    import shutil
+
+    bundled_dir = os.path.join(os.path.dirname(__file__), "skills")
+    target_dir = os.path.join(data_dir, "skills")
+    os.makedirs(target_dir, exist_ok=True)
+    if os.path.isdir(bundled_dir):
+        for fname in os.listdir(bundled_dir):
+            if fname.endswith(".md"):
+                src = os.path.join(bundled_dir, fname)
+                dst = os.path.join(target_dir, fname)
+                if not os.path.exists(dst):
+                    shutil.copy2(src, dst)
+                    log.info("skill_seeded", name=fname)
 
 
 async def _configure_git():
@@ -199,7 +229,7 @@ def _restart_loop(core_loop: CoreLoop):
     asyncio.create_task(core_loop.run())
 
 
-app = FastAPI(title="JARVIS", version=__version__, lifespan=lifespan)
+app = FastAPI(title="JARVIS", version="0.1.1", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -208,20 +238,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.add_middleware(SessionMiddleware, secret_key=settings.auth_secret_key)
-app.add_middleware(AuthMiddleware)
 
 app.include_router(api_router)
-app.include_router(auth_router)
 
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    if settings.auth_enabled:
-        session = websocket.scope.get("session") or {}
-        if not session.get("user"):
-            await websocket.close(code=4001)
-            return
     await ws_manager.connect(websocket)
     try:
         while True:

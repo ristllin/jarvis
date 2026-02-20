@@ -17,15 +17,23 @@ class Executor:
         self.session_factory = session_factory
 
     async def execute_plan(self, plan: dict) -> list[dict]:
-        """Execute all actions in a plan and return results."""
+        """Execute all actions in a plan and return results.
+
+        Each action may include a 'tier' field assigned by the planner,
+        which is passed through to tools that internally use LLM routing.
+        """
         actions = plan.get("actions", [])
         results = []
 
         for i, action in enumerate(actions):
             tool_name = action.get("tool", "")
             parameters = action.get("parameters", {})
+            action_tier = action.get("tier")
 
-            log.info("executing_action", index=i, tool=tool_name, params=list(parameters.keys()))
+            if action_tier and "tier" not in parameters:
+                parameters["tier"] = action_tier
+
+            log.info("executing_action", index=i, tool=tool_name, tier=action_tier, params=list(parameters.keys()))
 
             t0 = time.monotonic()
             result = await self.tools.execute(tool_name, parameters)

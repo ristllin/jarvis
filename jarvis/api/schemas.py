@@ -22,8 +22,6 @@ class ChatResponse(BaseModel):
     model: str | None = None
     provider: str | None = None
     tokens_used: int | None = None
-    actions_taken: list[dict] | None = None
-    agentic: bool = True
 
 
 class GoalsUpdate(BaseModel):
@@ -39,17 +37,10 @@ class StatusResponse(BaseModel):
     short_term_goals: list[str]
     mid_term_goals: list[str]
     long_term_goals: list[str]
-    short_term_memories: list[dict] = []
     active_task: str | None
     iteration: int
     is_paused: bool
     started_at: str | None
-
-
-class ShortTermMemoryUpdate(BaseModel):
-    add: list[str] | None = None
-    remove: list[int] | None = None
-    replace: list[str] | None = None
 
 
 class BudgetResponse(BaseModel):
@@ -65,7 +56,6 @@ class ProviderBalanceUpdate(BaseModel):
     currency: str | None = None  # USD, EUR, credits, requests, etc.
     notes: str | None = None
     reset_spending: bool = False  # Reset tracked spending when updating balance
-    api_key: str | None = None  # Update the API key for this provider
 
 
 class AddProviderRequest(BaseModel):

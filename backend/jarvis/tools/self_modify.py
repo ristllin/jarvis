@@ -1,11 +1,15 @@
 import os
-import sys
+import re
 import shutil
 import signal
 import asyncio
 from datetime import datetime, timezone
 from jarvis.tools.base import Tool, ToolResult
 from jarvis.observability.logger import get_logger
+
+# Version bump + changelog for self-modification commits
+VERSION_FILE = "jarvis/version.py"
+CHANGELOG_FILE = "CHANGELOG.md"
 
 log = get_logger("tools.self_modify")
 
@@ -191,6 +195,83 @@ class SelfModifyTool(Tool):
         except Exception as e:
             return ToolResult(success=False, output="", error=str(e))
 
+    # ── Version bump + changelog (for commit) ──────────────────────────────
+
+    def _get_current_version(self, cwd: str) -> str:
+        """Read current version from jarvis/version.py or main.py fallback."""
+        version_path = os.path.join(cwd, VERSION_FILE)
+        main_path = os.path.join(cwd, "jarvis", "main.py")
+        for path in [version_path, main_path]:
+            if os.path.isfile(path):
+                with open(path) as f:
+                    content = f.read()
+                m = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', content)
+                if m:
+                    return m.group(1)
+        return "0.1.0"
+
+    def _bump_patch(self, version: str) -> str:
+        """Bump patch component: 0.2.0 -> 0.2.1."""
+        parts = re.match(r"^(\d+)\.(\d+)\.(\d+)(.*)$", version)
+        if parts:
+            major, minor, patch, suffix = parts.groups()
+            return f"{major}.{minor}.{int(patch) + 1}{suffix}"
+        return version
+
+    def _write_version(self, cwd: str, version: str) -> None:
+        """Write version to jarvis/version.py."""
+        path = os.path.join(cwd, VERSION_FILE)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        content = f'''"""Single source of truth for JARVIS version."""
+
+__version__ = "{version}"
+'''
+        with open(path, "w") as f:
+            f.write(content)
+
+    def _append_changelog(self, cwd: str, version: str, message: str, files_changed: list[str]) -> None:
+        """Append a changelog entry for this commit."""
+        path = os.path.join(cwd, CHANGELOG_FILE)
+        now = datetime.now(UTC).strftime("%Y-%m-%d")
+        files_section = "\n".join(f"  - {f}" for f in sorted(files_changed)[:50])
+        if len(files_changed) > 50:
+            files_section += f"\n  - ... and {len(files_changed) - 50} more"
+        entry = f"""
+## [{version}] - {now}
+
+**Commit:** {message}
+
+### Files changed
+{files_section}
+"""
+        if os.path.isfile(path):
+            with open(path) as f:
+                existing = f.read()
+            # Ensure we have a header if file is empty or malformed
+            if "## [" not in existing:
+                existing = "# Changelog\n\nAll notable changes from JARVIS self-modifications.\n" + existing
+            with open(path, "w") as f:
+                f.write(existing.rstrip() + entry)
+        else:
+            with open(path, "w") as f:
+                f.write("# Changelog\n\nAll notable changes from JARVIS self-modifications." + entry)
+
+    async def _get_changed_files(self, cwd: str) -> list[str]:
+        """Get list of staged/changed files for changelog."""
+        try:
+            out = await self._run_git(["diff", "--cached", "--name-only"], cwd)
+            if out.strip():
+                return [line.strip() for line in out.strip().split("\n") if line.strip()]
+            out = await self._run_git(["status", "--short"], cwd)
+            # Parse " M file" or "?? file" etc.
+            files = []
+            for line in out.strip().split("\n"):
+                if len(line) >= 4:
+                    files.append(line[3:].strip())
+            return files
+        except Exception:
+            return []
+
     # ── Commit (to persistent backup repo) ─────────────────────────────────
 
     async def _commit(self, message: str) -> ToolResult:
@@ -222,16 +303,39 @@ class SelfModifyTool(Tool):
                 pass
 
             await self._run_git(["add", "-A"], cwd)
-            output = await self._run_git(["commit", "-m", message], cwd)
+            files_changed = await self._get_changed_files(cwd)
+
+            # Auto-bump version and append changelog
+            current = self._get_current_version(cwd)
+            new_version = self._bump_patch(current)
+            self._write_version(cwd, new_version)
+            self._append_changelog(cwd, new_version, message, files_changed)
+
+            # Sync version + changelog to live /app so running process reports correct version
+            for f in [VERSION_FILE, CHANGELOG_FILE]:
+                src = os.path.join(cwd, f)
+                dst = os.path.join("/app", f)
+                if os.path.isfile(src):
+                    os.makedirs(os.path.dirname(dst), exist_ok=True)
+                    shutil.copy2(src, dst)
+
+            await self._run_git(["add", "-A"], cwd)
+            commit_msg = f"v{new_version}: {message}"
+            if files_changed:
+                files_line = ", ".join(files_changed[:15])
+                if len(files_changed) > 15:
+                    files_line += f" (+{len(files_changed) - 15} more)"
+                commit_msg += f"\n\nFiles changed: {files_line}"
+            output = await self._run_git(["commit", "-m", commit_msg], cwd)
 
             if self.blob:
                 self.blob.store(
                     event_type="self_modification_commit",
-                    content=f"Commit: {message}\n{output}",
-                    metadata={"message": message, "repo": cwd},
+                    content=f"v{new_version}: {message}\n{output}",
+                    metadata={"message": message, "version": new_version, "repo": cwd},
                 )
 
-            return ToolResult(success=True, output=f"Committed: {message}\n{output}")
+            return ToolResult(success=True, output=f"Committed v{new_version}: {message}\n{output}")
         except Exception as e:
             return ToolResult(success=False, output="", error=str(e))
 
@@ -259,8 +363,30 @@ class SelfModifyTool(Tool):
 
             # Push — try HEAD:main first (works regardless of local branch name)
             output = await self._run_git(["push", "-u", "origin", "HEAD:main"], cwd)
-            if "fatal" in output.lower() and "does not match" not in output.lower():
-                # Might need to force-push first time or push to master
+
+            # If rejected (non-fast-forward), try to pull --rebase then push
+            if "rejected" in output.lower() or "non-fast-forward" in output.lower() or "fetch first" in output.lower():
+                log.info("git_push_rejected_trying_pull", output=output[:200])
+
+                # Ensure we have a local branch to rebase onto
+                await self._run_git(["checkout", "-B", "main"], cwd)
+
+                # Fetch and rebase
+                await self._run_git(["fetch", "origin", "main"], cwd)
+                rebase_output = await self._run_git(["rebase", "origin/main"], cwd)
+
+                if "conflict" in rebase_output.lower():
+                    # Abort rebase and force push instead
+                    await self._run_git(["rebase", "--abort"], cwd)
+                    log.warning("git_rebase_conflict_force_pushing")
+                    output = await self._run_git(["push", "-u", "origin", "HEAD:main", "--force"], cwd)
+                else:
+                    # Rebase succeeded, try push again
+                    output = await self._run_git(["push", "-u", "origin", "HEAD:main"], cwd)
+
+            # If still failing (e.g. empty repo, first push), force push
+            if "fatal" in output.lower() or "error" in output.lower():
+                log.warning("git_push_fallback_force", output=output[:200])
                 output = await self._run_git(["push", "-u", "origin", "HEAD:main", "--force"], cwd)
 
             if self.blob:

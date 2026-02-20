@@ -41,7 +41,7 @@ class SelfModifyTool(Tool):
     description = (
         "Read or modify JARVIS's own source code with version tracking and persistence. "
         "Changes are saved to both the live container AND /data/code/ (persists across restarts). "
-        "Actions: 'read', 'write', 'list', 'diff', 'commit', 'push', 'pull', 'log', 'revert', 'redeploy'."
+        "Actions: 'read', 'write', 'list', 'diff', 'commit', 'push', 'log', 'revert', 'redeploy'."
     )
     timeout_seconds = 120
 
@@ -81,8 +81,6 @@ class SelfModifyTool(Tool):
             return await self._commit(message or "JARVIS self-modification")
         if action == "push":
             return await self._push(remote)
-        if action == "pull":
-            return await self._pull()
         if action == "log":
             return await self._log()
         if action == "revert":
@@ -92,7 +90,7 @@ class SelfModifyTool(Tool):
         return ToolResult(
             success=False,
             output="",
-            error=f"Unknown action: {action}. Use: read/write/list/diff/commit/push/pull/log/revert/redeploy",
+            error=f"Unknown action: {action}. Use: read/write/list/diff/commit/push/log/revert/redeploy",
         )
 
     # ── Read ───────────────────────────────────────────────────────────────
@@ -377,6 +375,7 @@ __version__ = "{version}"
             # Check if remote exists
             remotes = await self._run_git(["remote", "-v"], cwd)
             if not remotes.strip():
+                # Try env var first, then explicit parameter
                 repo_url = remote or os.environ.get("GITHUB_REPO")
                 if repo_url and "REPLACE" not in repo_url:
                     await self._run_git(["remote", "add", "origin", repo_url], cwd)
@@ -385,12 +384,13 @@ __version__ = "{version}"
                     return ToolResult(
                         success=False,
                         output="",
-                        error="No remote configured. Set GITHUB_REPO in .env or use: self_modify action=push remote=https://...",
+                        error="No remote configured. Set GITHUB_REPO in .env or use: self_modify action=push remote=https://github.com/user/repo.git",
                     )
             elif remote:
+                # Update remote URL if explicitly given
                 await self._run_git(["remote", "set-url", "origin", remote], cwd)
 
-            # Try normal push first
+            # Push — try HEAD:main first (works regardless of local branch name)
             output = await self._run_git(["push", "-u", "origin", "HEAD:main"], cwd)
 
             # If rejected (non-fast-forward), try to pull --rebase then push
@@ -418,56 +418,14 @@ __version__ = "{version}"
                 log.warning("git_push_fallback_force", output=output[:200])
                 output = await self._run_git(["push", "-u", "origin", "HEAD:main", "--force"], cwd)
 
-            success = "fatal" not in output.lower() and "error: " not in output.lower()
-
             if self.blob:
                 self.blob.store(
                     event_type="git_push",
                     content=f"Pushed to remote\n{output}",
-                    metadata={"remote": remote or "origin", "success": success},
+                    metadata={"remote": remote or "origin"},
                 )
 
-            return ToolResult(success=success, output=f"Push result:\n{output}", error=None if success else output)
-        except Exception as e:
-            return ToolResult(success=False, output="", error=str(e))
-
-    # ── Pull from GitHub ────────────────────────────────────────────────────
-
-    async def _pull(self) -> ToolResult:
-        """Pull latest changes from the remote git repository."""
-        try:
-            cwd = "/data/code/backend"
-            remotes = await self._run_git(["remote", "-v"], cwd)
-            if not remotes.strip():
-                return ToolResult(success=False, output="", error="No remote configured")
-
-            await self._run_git(["checkout", "-B", "main"], cwd)
-            output = await self._run_git(["pull", "origin", "main", "--rebase"], cwd)
-
-            if "conflict" in output.lower():
-                await self._run_git(["rebase", "--abort"], cwd)
-                return ToolResult(
-                    success=False, output=output, error="Pull failed due to merge conflicts. Use force push instead."
-                )
-
-            # Sync pulled code to live
-            try:
-                proc = await asyncio.create_subprocess_exec(
-                    "rsync",
-                    "-a",
-                    "--delete",
-                    "--exclude=.git",
-                    "--exclude=__pycache__",
-                    cwd + "/",
-                    "/app/",
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                await proc.communicate()
-            except FileNotFoundError:
-                shutil.copytree(cwd, "/app", dirs_exist_ok=True)
-
-            return ToolResult(success=True, output=f"Pull result:\n{output}\nLive code updated.")
+            return ToolResult(success=True, output=f"Push result:\n{output}")
         except Exception as e:
             return ToolResult(success=False, output="", error=str(e))
 
@@ -508,15 +466,7 @@ __version__ = "{version}"
                 )
                 await proc.communicate()
             except FileNotFoundError:
-                proc = await asyncio.create_subprocess_exec(
-                    "cp",
-                    "-a",
-                    cwd + "/.",
-                    "/app/",
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                await proc.communicate()
+                shutil.copytree(cwd, "/app", dirs_exist_ok=True)
 
             if self.blob:
                 self.blob.store(
@@ -553,15 +503,7 @@ __version__ = "{version}"
                 )
                 await proc.communicate()
             except FileNotFoundError:
-                proc = await asyncio.create_subprocess_exec(
-                    "cp",
-                    "-a",
-                    cwd + "/.",
-                    "/app/",
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                await proc.communicate()
+                shutil.copytree(cwd, "/app", dirs_exist_ok=True)
 
             # 3. Validate the new code can at least import
             proc = await asyncio.create_subprocess_exec(
@@ -589,11 +531,9 @@ __version__ = "{version}"
                 )
 
             # 4. Signal uvicorn to gracefully restart
-            # With --workers 1: worker's parent is main uvicorn; signal parent.
-            # Single process (no workers): we are main; signal self.
-            target_pid = os.getppid() if os.getppid() != 1 else os.getpid()
-            log.info("redeploy_restart", message=message, target_pid=target_pid)
-            os.kill(target_pid, signal.SIGHUP)
+            # SIGHUP tells uvicorn parent to restart workers
+            log.info("redeploy_restart", message=message)
+            os.kill(os.getpid(), signal.SIGHUP)
 
             return ToolResult(
                 success=True, output=f"Redeploy initiated.\n{commit_result.output}\nCode validated. Restarting..."
@@ -624,8 +564,8 @@ __version__ = "{version}"
             "parameters": {
                 "action": {
                     "type": "string",
-                    "description": "One of: read, write, list, diff, commit, push, pull, log, revert, redeploy",
-                    "enum": ["read", "write", "list", "diff", "commit", "push", "pull", "log", "revert", "redeploy"],
+                    "description": "One of: read, write, list, diff, commit, push, log, revert, redeploy",
+                    "enum": ["read", "write", "list", "diff", "commit", "push", "log", "revert", "redeploy"],
                 },
                 "path": {"type": "string", "description": "File or directory path (e.g. /app/jarvis/core/loop.py)"},
                 "content": {"type": "string", "description": "File content (for 'write' action)"},

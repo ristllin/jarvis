@@ -14,6 +14,7 @@ export function ChatPanel({ lastMessage }: ChatPanelProps) {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const sendingRef = useRef(false)
 
   useEffect(() => {
     api.getChatHistory(50).then((data) => {
@@ -28,7 +29,7 @@ export function ChatPanel({ lastMessage }: ChatPanelProps) {
   }, [messages])
 
   useEffect(() => {
-    if (lastMessage?.type === 'chat_message') {
+    if (lastMessage?.type === 'chat_message' && !sendingRef.current) {
       api.getChatHistory(50).then((data) => {
         setMessages(data.messages || [])
       }).catch(() => {})
@@ -44,22 +45,31 @@ export function ChatPanel({ lastMessage }: ChatPanelProps) {
     setMessages((prev) => [...prev, tempMsg])
 
     setSending(true)
+    sendingRef.current = true
     try {
       const response = await api.sendChat(text)
-      const reply: ChatMessage = {
-        role: 'jarvis',
-        content: response.reply,
-        timestamp: new Date().toISOString(),
-        metadata: { model: response.model, provider: response.provider, tokens_used: response.tokens_used },
+      if (response.reply) {
+        const reply: ChatMessage = {
+          role: 'jarvis',
+          content: response.reply,
+          timestamp: new Date().toISOString(),
+          metadata: { model: response.model, provider: response.provider, tokens_used: response.tokens_used },
+        }
+        setMessages((prev) => [...prev, reply])
+      } else {
+        api.getChatHistory(50).then((data) => {
+          setMessages(data.messages || [])
+        }).catch(() => {})
       }
-      setMessages((prev) => [...prev, reply])
     } catch (err) {
+      console.error('Chat send error:', err)
       setMessages((prev) => [
         ...prev,
         { role: 'jarvis', content: 'Error: Failed to get response. Please try again.', timestamp: new Date().toISOString() },
       ])
     } finally {
       setSending(false)
+      sendingRef.current = false
     }
   }
 

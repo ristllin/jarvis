@@ -5,7 +5,9 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from jarvis.config import settings
-from jarvis.database import engine, async_session, Base
+from jarvis.core.email_listener import EmailInboxListener
+from jarvis.core.telegram_listener import TelegramListener
+from jarvis.database import Base, async_session, engine
 from jarvis.observability.logger import setup_logging, get_logger, FileLogger
 from jarvis.memory.blob import BlobStorage
 from jarvis.memory.vector import VectorMemory
@@ -86,7 +88,10 @@ async def lifespan(app: FastAPI):
     planner = Planner(router, working, vector)
     executor = Executor(tools, blob, file_logger, session_factory=async_session)
 
-    # 3. Configure git inside container
+    # 3. Seed foundational skills
+    _seed_skills(data_dir)
+
+    # 3b. Configure git inside container
     await _configure_git()
 
     # 4. Store in shared state for API access
@@ -124,6 +129,24 @@ async def lifespan(app: FastAPI):
     app_state["core_loop"] = core_loop
     app_state["loop_task"] = loop_task
 
+    # 6b. Start email inbox listener (disabled by default — enable via EMAIL_LISTENER_ENABLED=true)
+    email_listener = EmailInboxListener(
+        enqueue_fn=core_loop.enqueue_chat,
+        interval_seconds=settings.email_listener_interval_seconds,
+    )
+    email_listener.start()
+    app_state["email_listener"] = email_listener
+
+    # 6c. Start Telegram listener (disabled by default — enable via TELEGRAM_LISTENER_ENABLED=true)
+    telegram_listener = TelegramListener(
+        enqueue_fn=lambda msg: core_loop.enqueue_chat(msg, source="telegram"),
+        interval_seconds=settings.telegram_polling_interval,
+    )
+    telegram_listener.start()
+    core_loop.set_telegram_listener(telegram_listener)
+    app_state["telegram_listener"] = telegram_listener
+
+
     # 7. Start watchdog
     watchdog = Watchdog(state_manager, settings.heartbeat_timeout_seconds)
     watchdog.set_loop_task(loop_task, lambda: _restart_loop(core_loop))
@@ -139,7 +162,41 @@ async def lifespan(app: FastAPI):
     core_loop.stop()
     loop_task.cancel()
     watchdog_task.cancel()
+
+    # Stop email listener
+    try:
+        email_listener = app_state.get("email_listener")
+        if email_listener:
+            await email_listener.stop()
+    except Exception as e:
+        log.warning("email_listener_stop_failed", error=str(e))
+
+    # Stop Telegram listener
+    try:
+        tg_listener = app_state.get("telegram_listener")
+        if tg_listener:
+            await tg_listener.stop()
+    except Exception as e:
+        log.warning("telegram_listener_stop_failed", error=str(e))
+
     await engine.dispose()
+
+
+def _seed_skills(data_dir: str):
+    """Copy bundled skills to /data/skills/ if they don't exist yet."""
+    import shutil
+
+    bundled_dir = os.path.join(os.path.dirname(__file__), "skills")
+    target_dir = os.path.join(data_dir, "skills")
+    os.makedirs(target_dir, exist_ok=True)
+    if os.path.isdir(bundled_dir):
+        for fname in os.listdir(bundled_dir):
+            if fname.endswith(".md"):
+                src = os.path.join(bundled_dir, fname)
+                dst = os.path.join(target_dir, fname)
+                if not os.path.exists(dst):
+                    shutil.copy2(src, dst)
+                    log.info("skill_seeded", name=fname)
 
 
 async def _configure_git():

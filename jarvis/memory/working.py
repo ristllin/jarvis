@@ -105,7 +105,6 @@ class WorkingMemory:
             "system_prompt_length": len(self.system_prompt),
             "system_prompt_tokens": sys_tokens,
             "message_count": len(self.messages),
-            "messages": truncated_messages,
             "injected_memory_count": len(self.injected_memories),
             "injected_memories": self.injected_memories_raw[:50],
             "total_tokens_estimate": self._estimate_tokens(),

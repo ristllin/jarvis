@@ -96,15 +96,16 @@ export default function App() {
       <main className="flex-1 flex flex-col">
         <ControlBar status={status} onRefresh={refresh} />
         <div className="flex-1 overflow-auto p-6">
-          {tab === 'dashboard' && <Dashboard status={status} budget={budget} memory={memoryStats} lastMessage={lastMessage} />}
-          {tab === 'chat' && <ChatPanel lastMessage={lastMessage} />}
-          {tab === 'analytics' && <AnalyticsPanel />}
-          {tab === 'budget' && <BudgetPanel budget={budget} onRefresh={refresh} />}
-          {tab === 'memory' && <MemoryPanel stats={memoryStats} />}
-          {tab === 'logs' && <LogViewer />}
-          {tab === 'tools' && <ToolUsagePanel />}
-          {tab === 'models' && <ModelHierarchyPanel />}
-          {tab === 'directive' && <DirectiveEditor currentDirective={status?.directive || ''} onUpdate={refresh} />}
+          <div className={tab === 'dashboard' ? '' : 'hidden'}><Dashboard status={status} budget={budget} memory={memoryStats} lastMessage={lastMessage} /></div>
+          <div className={tab === 'chat' ? '' : 'hidden'}><ChatPanel lastMessage={lastMessage} /></div>
+          <div className={tab === 'analytics' ? '' : 'hidden'}><AnalyticsPanel /></div>
+          <div className={tab === 'budget' ? '' : 'hidden'}><BudgetPanel budget={budget} onRefresh={refresh} /></div>
+          <div className={tab === 'memory' ? '' : 'hidden'}><MemoryPanel stats={memoryStats} /></div>
+          <div className={tab === 'logs' ? '' : 'hidden'}><LogViewer /></div>
+          <div className={tab === 'tools' ? '' : 'hidden'}><ToolUsagePanel /></div>
+          <div className={tab === 'models' ? '' : 'hidden'}><ModelHierarchyPanel /></div>
+          <div className={tab === 'iterations' ? '' : 'hidden'}><IterationDebugPanel /></div>
+          <div className={tab === 'directive' ? '' : 'hidden'}><DirectiveEditor currentDirective={status?.directive || ''} onUpdate={refresh} /></div>
         </div>
       </main>
     </div>

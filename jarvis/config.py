@@ -6,7 +6,6 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
     mistral_api_key: str | None = None
-    grok_api_key: str | None = None
     tavily_api_key: str | None = None
 
     # Ollama
@@ -44,6 +43,8 @@ class Settings(BaseSettings):
     # Telegram
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
+    telegram_listener_enabled: bool = False
+    telegram_polling_interval: int = 5
 
     # Email inbox listener
     email_listener_enabled: bool = False
@@ -68,10 +69,6 @@ class Settings(BaseSettings):
     )
 
     model_config = {"env_file": ".env", "extra": "ignore"}
-
-    @property
-    def allowed_emails_set(self) -> set[str]:
-        return {e.strip().lower() for e in self.allowed_emails.split(",") if e.strip()}
 
 
 settings = Settings()

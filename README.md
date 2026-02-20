@@ -13,8 +13,8 @@ JARVIS is **not** a chatbot. It is a persistent agent with an internal planning 
 cp .env.example .env
 # Edit .env with your actual keys
 
-# 2. Build the Docker image
-bash build.sh
+# 2. Build and run
+./build.sh
 
 # 3. Run
 docker compose up -d
@@ -22,6 +22,102 @@ docker compose up -d
 # 4. Open the dashboard
 open http://localhost:3000
 ```
+
+## Deployment & Updates
+
+### First-time setup
+
+```bash
+git clone <your-jarvis-repo>
+cd Jarvis
+cp .env.example .env   # Fill in API keys
+./build.sh             # Syncs code, builds image, starts services
+```
+
+### Deploying changes (the standard workflow)
+
+After making code changes (or pulling new commits):
+
+```bash
+./build.sh
+```
+
+This single command:
+1. Syncs `jarvis/` → `backend/jarvis/` (the Dockerfile copies from `backend/`)
+2. Rebuilds the Docker image
+3. Stops and restarts all services
+4. Waits for health check and prints the running version
+
+### Force rebuild (no Docker cache)
+
+If you suspect stale layers or dependency issues:
+
+```bash
+./build.sh --no-cache
+```
+
+### Sync only (no build)
+
+To sync code without rebuilding (useful during development):
+
+```bash
+./build.sh --sync-only
+```
+
+### Manual Docker commands (if you prefer)
+
+```bash
+# Sync code first (important — Docker builds from backend/)
+rsync -av --delete --exclude='__pycache__/' --exclude='tests/' jarvis/ backend/jarvis/
+
+# Rebuild and restart
+docker compose build
+docker compose down
+docker compose up -d
+
+# Check logs
+docker compose logs -f jarvis
+
+# Verify version
+curl -s http://localhost:8000/api/status | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])"
+```
+
+### Important: code lives in two places
+
+| Directory | Purpose |
+|-----------|---------|
+| `jarvis/` | Development source (edit files here) |
+| `backend/jarvis/` | Docker build context (auto-synced by `build.sh`) |
+
+Always edit `jarvis/` and run `./build.sh` to deploy. Never edit `backend/jarvis/` directly.
+
+### Preserving data across rebuilds
+
+The `./data/` directory is a Docker volume mount. `docker compose down` preserves it.
+Only `docker compose down -v` destroys volumes — **never run this** unless you want to wipe all memories and state.
+
+### Troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| Wrong version in UI | `./build.sh --no-cache` |
+| Backend unhealthy | `docker compose logs jarvis` — look for import errors |
+| Stuck on old code | `rm -f data/code/.image_hash && ./build.sh` |
+| Frontend 502 | Wait 15s for Vite to start, or check `docker compose exec jarvis cat /tmp/vite.log` |
+
+## Remote Access (ngrok)
+
+ngrok runs automatically when you start the stack. The dashboard is exposed at `https://collins-saxicolous-moveably.ngrok-free.dev`.
+
+**Basic Auth** (configured in `ngrok-policy.yml`):
+- Copy `ngrok-policy.example.yml` to `ngrok-policy.yml` and set your username:password
+- Or create `ngrok-policy.yml` with: `ristlin:your-strong-password`
+- This file is in `.gitignore` (contains credentials)
+
+**Requirements:**
+- `NGROK_AUTHTOKEN` in `.env` (from [ngrok dashboard](https://dashboard.ngrok.com))
+- `ngrok-policy.yml` present (or ngrok will fail to start — comment out the ngrok service in docker-compose if you don't need remote access)
+
 
 ## Architecture
 
@@ -191,11 +287,8 @@ cat .env
 #### 5. Build and start
 
 ```bash
-# Build the Docker image
-bash build.sh
-
-# Start JARVIS
-docker compose up -d
+# Build and start JARVIS
+./build.sh
 
 # Verify it resumed correctly
 curl http://localhost:8000/api/status

@@ -56,7 +56,13 @@ class AnthropicProvider(LLMProvider):
             "messages": chat_messages,
         }
         if system_msg:
-            kwargs["system"] = system_msg
+            kwargs["system"] = [
+                {
+                    "type": "text",
+                    "text": system_msg,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ]
 
         try:
             response = await client.messages.create(**kwargs)

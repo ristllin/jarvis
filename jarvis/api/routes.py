@@ -1,5 +1,4 @@
 import json
-import os
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter
@@ -14,10 +13,10 @@ from jarvis.api.schemas import (
     GoalsUpdate,
     MemoryMarkPermanent,
     ProviderBalanceUpdate,
-    ShortTermMemoryUpdate,
 )
 from jarvis.api.websocket import ws_manager
 from jarvis.observability.logger import get_logger
+from jarvis.safety.prompt_builder import build_chat_system_prompt
 
 log = get_logger("api")
 
@@ -33,8 +32,6 @@ def get_app_state():
 
 @router.get("/status")
 async def get_status():
-    from jarvis.version import __version__
-
     state = get_app_state()
     current = await state["state_manager"].get_state()
     core_loop = state.get("core_loop")
@@ -44,13 +41,9 @@ async def get_status():
             "current_sleep_seconds": core_loop._current_sleep_seconds,
             "min_sleep_seconds": 10,
             "max_sleep_seconds": 3600,
-            "current_model": getattr(core_loop, "_current_model", "") or None,
-            "current_provider": getattr(core_loop, "_current_provider", "") or None,
-            "current_tier": getattr(core_loop, "_current_tier", "") or None,
         }
     return {
         "status": "running" if not current.get("is_paused") else "paused",
-        "version": __version__,
         **current,
         **sleep_info,
     }
@@ -92,6 +85,26 @@ async def delete_vector_memory(memory_id: str):
     state = get_app_state()
     state["vector"].delete_memory(memory_id)
     return {"ok": True}
+
+
+@router.post("/memory/vector/flush")
+async def flush_vector_memory(keep_permanent: bool = True):
+    """Flush vector memory. If keep_permanent=True, only deletes non-permanent entries."""
+    state = get_app_state()
+    vector = state["vector"]
+    if keep_permanent:
+        count = vector.flush_non_permanent()
+    else:
+        count = vector.flush_all()
+    return {"ok": True, "deleted": count, "kept_permanent": keep_permanent}
+
+
+@router.post("/memory/vector/deduplicate")
+async def deduplicate_vector_memory():
+    """Run deduplication on vector memory."""
+    state = get_app_state()
+    removed = state["vector"].deduplicate()
+    return {"ok": True, "duplicates_removed": removed}
 
 
 @router.get("/memory/blob")
@@ -186,48 +199,6 @@ async def mark_memory_permanent(body: MemoryMarkPermanent):
     return {"ok": True}
 
 
-@router.get("/memory/short-term")
-async def get_short_term_memories():
-    """Get all short-term memories (scratch pad)."""
-    state = get_app_state()
-    current = await state["state_manager"].get_state()
-    return {
-        "memories": current.get("short_term_memories", []),
-        "count": len(current.get("short_term_memories", [])),
-        "max_entries": 50,
-        "max_age_hours": 48,
-    }
-
-
-@router.post("/memory/short-term")
-async def update_short_term_memories(body: ShortTermMemoryUpdate):
-    """Manage short-term memories: add, remove, or replace."""
-    state = get_app_state()
-    sm = state["state_manager"]
-    current = await sm.get_state()
-    iteration = current.get("iteration", 0)
-
-    if body.replace is not None:
-        await sm.replace_short_term_memories(body.replace, iteration)
-        return {"ok": True, "action": "replaced", "count": len(body.replace)}
-    actions = []
-    if body.remove:
-        await sm.remove_short_term_memories(body.remove)
-        actions.append(f"removed {len(body.remove)}")
-    if body.add:
-        await sm.add_short_term_memories(body.add, iteration)
-        actions.append(f"added {len(body.add)}")
-    return {"ok": True, "actions": actions}
-
-
-@router.delete("/memory/short-term")
-async def clear_short_term_memories():
-    """Clear all short-term memories."""
-    state = get_app_state()
-    await state["state_manager"].clear_short_term_memories()
-    return {"ok": True, "action": "cleared"}
-
-
 @router.post("/control/pause")
 async def pause():
     state = get_app_state()
@@ -279,7 +250,13 @@ async def get_news():
 
     news_tool = NewsMonitorTool()
     result = await news_tool.execute(query="latest news", max_results=5)
-    return {"news": result.output}
+    if not result.success:
+        return {"news": [], "error": result.error}
+    try:
+        articles = json.loads(result.output) if isinstance(result.output, str) else result.output
+    except (json.JSONDecodeError, TypeError):
+        articles = []
+    return {"news": articles}
 
 
 # ── Provider balance management ───────────────────────────────────────────
@@ -295,7 +272,7 @@ async def get_providers():
 
 @router.put("/providers/{provider}")
 async def update_provider(provider: str, body: ProviderBalanceUpdate):
-    """Update a provider's known balance, tier, currency, notes, or API key."""
+    """Update a provider's known balance, tier, currency, or notes."""
     state = get_app_state()
     result = await state["budget"].update_provider_balance(
         provider=provider,
@@ -305,42 +282,7 @@ async def update_provider(provider: str, body: ProviderBalanceUpdate):
         notes=body.notes,
         reset_spending=body.reset_spending,
     )
-
-    # Handle API key update separately — write to .env and live config
-    if body.api_key:
-        import os
-
-        from jarvis.config import settings
-
-        key_attr = f"{provider}_api_key"
-        if hasattr(settings, key_attr):
-            setattr(settings, key_attr, body.api_key)
-            os.environ[f"{provider.upper()}_API_KEY"] = body.api_key
-            # Persist to .env file
-            env_path = "/data/code/.env" if os.path.exists("/data/code/.env") else "/app/.env"
-            env_var = f"{provider.upper()}_API_KEY"
-            _update_env_file(env_path, env_var, body.api_key)
-            result["api_key_updated"] = True
-
     return {"ok": True, **result}
-
-
-def _update_env_file(path: str, key: str, value: str):
-    """Update or add an env var in a .env file."""
-    lines = []
-    found = False
-    if os.path.exists(path):
-        with open(path) as f:
-            for line in f:
-                if line.strip().startswith(f"{key}="):
-                    lines.append(f"{key}={value}\n")
-                    found = True
-                else:
-                    lines.append(line)
-    if not found:
-        lines.append(f"{key}={value}\n")
-    with open(path, "w") as f:
-        f.writelines(lines)
 
 
 @router.post("/providers")
@@ -363,25 +305,21 @@ async def add_provider(body: AddProviderRequest):
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(body: ChatRequest):
-    """Chat with JARVIS — fully agentic.
-
-    The message is injected into the main autonomous loop's next iteration.
-    JARVIS sees it in its full context (goals, memories, tools) and can
-    take actions alongside replying.  The HTTP request blocks until the
-    iteration completes and delivers the reply.
-    """
-    import asyncio
-
+    """Chat directly with JARVIS. Messages are recorded in blob and DB."""
     state = get_app_state()
     blob = state["blob"]
-    core_loop = state.get("core_loop")
+    llm_router = state["router"]
+    budget = state["budget"]
+    state_mgr = state["state_manager"]
 
-    # Record creator message in blob + DB
+    # Record creator message in blob
     blob.store(
         event_type="chat_creator",
         content=body.message,
         metadata={"role": "creator"},
     )
+
+    # Store in DB
     from jarvis.models import ChatMessage
 
     async with state["session_factory"]() as session:
@@ -389,39 +327,43 @@ async def chat(body: ChatRequest):
         session.add(msg)
         await session.commit()
 
-    if not core_loop:
-        return ChatResponse(
-            reply="Core loop is not running. Please wait for JARVIS to start.",
-            agentic=False,
-        )
+    # Build context: recent chat history + system prompt
+    chat_history = await _get_chat_history(state["session_factory"], limit=20)
+    current_state = await state_mgr.get_state()
+    budget_status = await budget.get_status()
 
-    # Enqueue the message into the main loop — this wakes it immediately
-    pending = core_loop.enqueue_chat(body.message)
+    system_prompt = build_chat_system_prompt(
+        directive=current_state["directive"],
+        budget_status=budget_status,
+    )
 
-    # Wait for the loop iteration to complete and deliver the reply
-    # Timeout after 120 seconds (iterations with tool use can take a while)
-    try:
-        await asyncio.wait_for(pending.response_event.wait(), timeout=120.0)
-    except TimeoutError:
-        return ChatResponse(
-            reply="I'm still processing your message — the current iteration is taking longer than expected. "
-            "Check the dashboard for my response.",
-            agentic=True,
-        )
+    messages = [{"role": "system", "content": system_prompt}]
+    for entry in chat_history:
+        role = "user" if entry["role"] == "creator" else "assistant"
+        messages.append({"role": role, "content": entry["content"]})
 
-    reply_text = pending.response_text
+    # Get JARVIS response
+    response = await llm_router.complete(
+        messages=messages,
+        tier="level2",
+        temperature=0.7,
+        max_tokens=2048,
+        task_description="chat_with_creator",
+    )
 
-    # Record JARVIS reply in blob + DB
+    # Record JARVIS reply in blob
     blob.store(
         event_type="chat_jarvis",
-        content=reply_text,
-        metadata={"role": "jarvis", "agentic": True},
+        content=response.content,
+        metadata={"role": "jarvis", "model": response.model, "provider": response.provider},
     )
+
+    # Store in DB
     async with state["session_factory"]() as session:
         msg = ChatMessage(
             role="jarvis",
-            content=reply_text,
-            metadata_={"agentic": True, "actions": len(pending.actions_taken)},
+            content=response.content,
+            metadata_={"model": response.model, "provider": response.provider},
         )
         session.add(msg)
         await session.commit()
@@ -431,18 +373,20 @@ async def chat(body: ChatRequest):
         {
             "type": "chat_message",
             "role": "jarvis",
-            "content": reply_text[:200],
-            "agentic": True,
+            "content": response.content[:200],
         }
     )
 
+    # Wake the core loop so JARVIS processes any implications quickly
+    core_loop = state.get("core_loop")
+    if core_loop:
+        core_loop.wake()
+
     return ChatResponse(
-        reply=reply_text,
-        model=pending.response_model or None,
-        provider=pending.response_provider or None,
-        tokens_used=pending.response_tokens or None,
-        actions_taken=pending.actions_taken if pending.actions_taken else None,
-        agentic=True,
+        reply=response.content,
+        model=response.model,
+        provider=response.provider,
+        tokens_used=response.total_tokens,
     )
 
 
@@ -494,6 +438,7 @@ async def get_analytics(range: str = "24h"):
     Range: 1h, 6h, 24h, 7d, 30d
     Returns buckets with: cost, tokens, model calls, tool calls, errors.
     """
+
     from sqlalchemy import text
 
     state = get_app_state()

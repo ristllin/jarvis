@@ -16,8 +16,12 @@ REVERT_FLAG="/data/code/.needs_revert"
 echo "=== JARVIS Entrypoint ==="
 
 # ── 0. Image version tracking ─────────────────────────────────────────────
-# Hash ALL Python files in /app to detect any image update
-IMAGE_HASH=$(find /app -name "*.py" -type f | sort | xargs md5sum 2>/dev/null | md5sum | cut -d' ' -f1)
+# Hash ALL source files (Python + frontend) to detect any image update
+IMAGE_HASH=$(cat \
+    <(find /app -name "*.py" -type f | sort | xargs md5sum 2>/dev/null) \
+    <(find /frontend/src -type f | sort | xargs md5sum 2>/dev/null) \
+    <(md5sum /frontend/package.json 2>/dev/null) \
+    | md5sum | cut -d' ' -f1)
 STORED_HASH=""
 if [ -f "/data/code/.image_hash" ]; then
     STORED_HASH=$(cat /data/code/.image_hash)
@@ -85,8 +89,11 @@ else
         # Strategy: rsync with --ignore-existing for safety, then force-update known new files
         rsync -a --ignore-existing /app/ "$CODE_BACKUP/backend/" --exclude='.git' --exclude='__pycache__' 2>/dev/null || \
             cp -an /app/. "$CODE_BACKUP/backend/" 2>/dev/null || true
-        rsync -a --ignore-existing /frontend/ "$CODE_BACKUP/frontend/" --exclude='node_modules' --exclude='.git' 2>/dev/null || \
-            cp -an /frontend/. "$CODE_BACKUP/frontend/" 2>/dev/null || true
+
+        # Force-sync entire frontend from image (JARVIS doesn't self-modify frontend)
+        rsync -a /frontend/ "$CODE_BACKUP/frontend/" --exclude='node_modules' --exclude='.git' 2>/dev/null || \
+            cp -a /frontend/. "$CODE_BACKUP/frontend/" 2>/dev/null || true
+
 
         # Force-update critical infrastructure files that the image updated
         # (these are "ours" — from the developer, not JARVIS's modifications)
@@ -187,11 +194,26 @@ fi
 # If we crash before clearing it, next boot will revert
 touch "$REVERT_FLAG"
 
-# ── 6. Start frontend (background) ────────────────────────────────────────
+# ── 6. Start frontend (background with auto-restart) ────────────────────
 echo "[entrypoint] Starting frontend..."
-cd /frontend
-npx vite --host 0.0.0.0 --port 3000 &
+(
+    cd /frontend
+    while true; do
+        npx vite --host 0.0.0.0 --port 3000 >> /tmp/vite.log 2>&1
+        echo "[frontend] Vite exited (code $?) — restarting in 2s..." >> /tmp/vite.log
+        sleep 2
+    done
+) &
 FRONTEND_PID=$!
+
+# Wait for Vite to bind (max 20s)
+for i in $(seq 1 20); do
+  if curl -sf http://localhost:3000 > /dev/null 2>&1; then
+    echo "[entrypoint] Frontend ready"
+    break
+  fi
+  sleep 1
+done
 
 # ── 7. Start backend ──────────────────────────────────────────────────────
 echo "[entrypoint] Starting backend..."

@@ -1,5 +1,6 @@
 import httpx
 from bs4 import BeautifulSoup
+
 from jarvis.tools.base import Tool, ToolResult
 
 
@@ -10,8 +11,10 @@ class WebBrowseTool(Tool):
 
     async def execute(self, url: str, **kwargs) -> ToolResult:
         try:
+            from jarvis.version import __version__
+
+            headers = {"User-Agent": f"JARVIS/{__version__} (Autonomous AI Agent)"}
             async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-                headers = {"User-Agent": "JARVIS/0.1 (Autonomous AI Agent)"}
                 response = await client.get(url, headers=headers)
                 response.raise_for_status()
 

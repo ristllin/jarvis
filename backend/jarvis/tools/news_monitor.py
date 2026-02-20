@@ -1,3 +1,5 @@
+import json
+
 from jarvis.tools.base import Tool, ToolResult
 from jarvis.tools.web_search import WebSearchTool
 from typing import List, Dict
@@ -25,8 +27,9 @@ class NewsMonitorTool(Tool):
                 
             # Parse the search results into structured news articles
             news_articles = self._parse_search_results(result.output)
-            
-            return ToolResult(success=True, output=news_articles)
+
+            # Convert the list of articles to a JSON string for proper formatting
+            return ToolResult(success=True, output=json.dumps(news_articles, indent=2))
         except Exception as e:
             return ToolResult(success=False, output="", error=str(e))
 

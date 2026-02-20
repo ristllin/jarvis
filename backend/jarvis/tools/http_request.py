@@ -50,7 +50,7 @@ class HttpRequestTool(Tool):
             async with httpx.AsyncClient(
                 follow_redirects=follow_redirects,
                 timeout=httpx.Timeout(timeout),
-                verify=False,
+                verify=False,  # noqa: S501 — intentional for internal/test endpoints
             ) as client:
                 request_kwargs = {
                     "method": method,

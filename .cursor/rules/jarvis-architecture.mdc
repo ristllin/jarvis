@@ -1,0 +1,50 @@
+---
+description: JARVIS project architecture, directory structure, and key conventions
+globs: **/*.py,**/*.tsx,**/*.ts
+alwaysApply: true
+---
+
+# JARVIS Architecture
+
+## Project Structure
+- `jarvis/` — canonical Python source (synced to `backend/jarvis/` for Docker builds via `build.sh`)
+- `backend/jarvis/` — Docker build context (mirror of `jarvis/`)
+- `frontend/src/` — React 18 + TypeScript + TailwindCSS dashboard
+- `data/` — runtime persistent volume (DB, ChromaDB, blob, skills)
+
+## Build & Deploy
+- `build.sh` syncs `jarvis/` → `backend/jarvis/`, then `docker compose build` + `up`
+- `build.sh --sync-only` for code sync without rebuild
+- Always edit `backend/jarvis/` then run reverse sync or edit both
+
+## Core Loop
+```
+CoreLoop.run() → infinite loop:
+  1. Load state + increment iteration
+  2. Get budget status
+  3. Plan (tier-1 LLM with system prompt + iteration context)
+  4. Execute actions via ToolRegistry
+  5. Store results → vector memory + working memory
+  6. Deliver chat replies
+  7. Update goals + short-term memories
+  8. Periodic maintenance (every 10 iterations)
+  9. Sleep (interruptible)
+```
+
+## Key Patterns
+- **Dual-write**: Code changes go to both `/app/` (live) and `/data/code/` (persistent)
+- **Tier routing**: Planner always level1, actions get per-action tiers
+- **Skills**: Markdown files in `/data/skills/`, loaded by coding_agent and code_architect
+- **Chat flow**: Web/Telegram/Email → `enqueue_chat()` → CoreLoop → plan → reply
+- **Tools**: Inherit from `Tool` base class, register in `registry.py`
+
+## Config
+- `config.py` uses pydantic_settings, env vars auto-loaded
+- Add new settings as class attributes with defaults
+
+## Python Style
+- Always async/await for I/O
+- Structured logging: `log.info("event", key=value)`
+- Tools return `ToolResult(success=bool, output=str, error=str|None)`
+- Type hints on all signatures
+- Imports: stdlib → third-party → local

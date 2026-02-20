@@ -8,9 +8,6 @@ The main agent provides:
   - working_directory (optional): where to focus (default: /app)
   - tier (optional): LLM tier to use (default: level2)
   - max_turns (optional): max editing iterations (default: 25)
-  - skills (optional): list of skill names to load into context
-  - plan_only (optional): if true, only generate a plan — don't execute
-  - approved_plan (optional): previously approved plan to execute
 """
 
 import json
@@ -30,10 +27,9 @@ class CodingAgentTool(Tool):
         "editing primitives — like a full coding IDE. Use this for multi-file "
         "edits, building new features, refactoring, writing tests, or modifying "
         "JARVIS's own code. You configure the task and optionally a custom "
-        "system prompt to guide the subagent. "
-        "Supports skills (reusable knowledge), planning mode, and plan execution."
+        "system prompt to guide the subagent."
     )
-    timeout_seconds = 600  # 10 minutes
+    timeout_seconds = 600  # 10 minutes — complex tasks take time
 
     def __init__(self, llm_router, blob_storage=None):
         self._agent = CodingAgent(llm_router, blob_storage)
@@ -43,12 +39,8 @@ class CodingAgentTool(Tool):
         task: str,
         system_prompt: str = None,
         working_directory: str = "/app",
-        tier: str = "coding_level2",
-        max_turns: int = 50,
-        skills: list = None,
-        plan_only: bool = False,
-        approved_plan: dict = None,
-        continuation_context: list = None,
+        tier: str = "level2",
+        max_turns: int = 25,
         **kwargs,
     ) -> ToolResult:
         try:
@@ -58,10 +50,6 @@ class CodingAgentTool(Tool):
                 system_prompt=system_prompt,
                 tier=tier,
                 max_turns=max_turns,
-                skills=skills or [],
-                plan_only=plan_only,
-                approved_plan=approved_plan,
-                continuation_context=continuation_context,
             )
 
             output = json.dumps(result, indent=2)
@@ -99,47 +87,11 @@ class CodingAgentTool(Tool):
                 },
                 "tier": {
                     "type": "string",
-                    "description": (
-                        "LLM tier for the coding agent. Defaults to 'coding_level2' which uses Devstral "
-                        "(free, optimized for coding). Options: 'coding_level1' (best coding model, free), "
-                        "'coding_level2' (good balance, free), 'coding_level3' (lightest, free), "
-                        "or standard tiers 'level1'/'level2'/'level3' for non-Devstral models."
-                    ),
+                    "description": "LLM tier: level1 (strongest), level2 (default, good balance), level3 (cheapest)",
                 },
                 "max_turns": {
                     "type": "integer",
-                    "description": "Maximum editing iterations (default: 50). Use higher for complex tasks.",
-                },
-                "skills": {
-                    "type": "array",
-                    "description": (
-                        "List of skill names to pre-load into the subagent's context. "
-                        "Use skills action=list to see available skills. "
-                        "Example: ['python-fastapi-patterns', 'react-component-style']"
-                    ),
-                },
-                "plan_only": {
-                    "type": "boolean",
-                    "description": (
-                        "If true, the agent will explore the codebase and propose a plan, "
-                        "but NOT make any changes. Use this for complex tasks where you want "
-                        "to review the plan before execution."
-                    ),
-                },
-                "approved_plan": {
-                    "type": "object",
-                    "description": (
-                        "A previously proposed plan (from plan_only=true) that you've reviewed "
-                        "and approved. The agent will execute this plan directly."
-                    ),
-                },
-                "continuation_context": {
-                    "type": "array",
-                    "description": (
-                        "Resume a previous coding session. Pass the 'continuation_context' "
-                        "from a previous result that hit max_turns. The agent will continue "
-                        "where it left off with full context of what was already done."
-                    ),
+                    "description": "Maximum editing iterations (default: 25)",
                 },
             },
             "required": ["task"],

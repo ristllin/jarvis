@@ -1,18 +1,30 @@
 import asyncio
 import time
 from jarvis.tools.base import Tool, ToolResult
-from jarvis.tools.web_search import WebSearchTool
-from jarvis.tools.web_browse import WebBrowseTool
-from jarvis.tools.code_exec import CodeExecTool
-from jarvis.tools.file_ops import FileReadTool, FileWriteTool, FileListTool
-from jarvis.tools.git_ops import GitTool
-from jarvis.tools.memory_ops import MemoryWriteTool, MemorySearchTool
+from jarvis.tools.browser_agent import BrowserAgentTool
+from jarvis.tools.code_architect import CodeArchitectTool
 from jarvis.tools.budget_query import BudgetQueryTool
-from jarvis.tools.llm_config import LLMConfigTool
-from jarvis.tools.self_modify import SelfModifyTool
+from jarvis.tools.code_exec import CodeExecTool
 from jarvis.tools.coding_agent import CodingAgentTool
-from jarvis.tools.resource_manager import ResourceManagerTool
+from jarvis.tools.coingecko import CoinGeckoTool
+from jarvis.tools.env_manager import EnvManagerTool
+from jarvis.tools.file_ops import FileListTool, FileReadTool, FileWriteTool
+from jarvis.tools.git_ops import GitTool
+from jarvis.tools.http_request import HttpRequestTool
+from jarvis.tools.llm_config import LLMConfigTool
+from jarvis.tools.memory_config import MemoryConfigTool
+from jarvis.tools.memory_ops import MemorySearchTool, MemoryWriteTool
+
+from jarvis.tools.monitor_tool import MonitorTool
 from jarvis.tools.news_monitor import NewsMonitorTool
+from jarvis.tools.resource_manager import ResourceManagerTool
+from jarvis.tools.self_analysis import SelfAnalysisTool
+from jarvis.tools.self_modify import SelfModifyTool
+from jarvis.tools.send_email import SendEmailTool
+from jarvis.tools.send_telegram import SendTelegramTool
+from jarvis.tools.skills import SkillsTool
+from jarvis.tools.web_browse import WebBrowseTool
+from jarvis.tools.web_search import WebSearchTool
 from jarvis.memory.vector import VectorMemory
 from jarvis.safety.validator import SafetyValidator
 from jarvis.observability.logger import get_logger
@@ -29,6 +41,8 @@ class ToolRegistry:
         self.validator = validator
         self.blob = blob_storage
         self._register_defaults(vector_memory, budget_tracker, llm_router, blob_storage)
+        self.monitor_tool = MonitorTool(self)
+        self.monitor_tool.start_monitoring()
 
     def _register_defaults(self, vector_memory: VectorMemory,
                            budget_tracker=None, llm_router=None, blob_storage=None):
@@ -43,6 +57,12 @@ class ToolRegistry:
             MemoryWriteTool(vector_memory),
             MemorySearchTool(vector_memory),
             SelfModifyTool(blob_storage=blob_storage),
+            SendEmailTool(),
+            SendTelegramTool(),
+            SkillsTool(),
+            HttpRequestTool(),
+            EnvManagerTool(),
+            CoinGeckoTool(),
             NewsMonitorTool(),
         ]
         if budget_tracker:
@@ -51,6 +71,9 @@ class ToolRegistry:
         if llm_router:
             default_tools.append(LLMConfigTool(llm_router))
             default_tools.append(CodingAgentTool(llm_router, blob_storage=blob_storage))
+            default_tools.append(SelfAnalysisTool(llm_router=llm_router, budget_tracker=budget_tracker))
+            default_tools.append(BrowserAgentTool(llm_router, blob_storage=blob_storage))
+            default_tools.append(CodeArchitectTool(llm_router))
         for tool in default_tools:
             self.tools[tool.name] = tool
             log.info("tool_registered", tool=tool.name)

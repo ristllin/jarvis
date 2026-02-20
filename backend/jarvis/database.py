@@ -24,3 +24,22 @@ async def get_session() -> AsyncSession:
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Lightweight column migrations for SQLite
+        await _migrate_columns(conn)
+
+
+async def _migrate_columns(conn):
+    """Add missing columns to existing tables (SQLite doesn't support ALTER TABLE ADD IF NOT EXISTS)."""
+    import sqlalchemy as sa
+
+    migrations = [
+        ("jarvis_state", "short_term_memories", "TEXT DEFAULT '[]'"),
+    ]
+    for table, column, col_type in migrations:
+        try:
+            await conn.execute(sa.text(f"SELECT {column} FROM {table} LIMIT 1"))
+        except Exception:
+            try:
+                await conn.execute(sa.text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
+            except Exception:
+                pass

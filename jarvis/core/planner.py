@@ -68,7 +68,7 @@ class Planner:
         )
         self.working.set_system_prompt(system_prompt)
 
-        # Retrieve relevant memories
+        # Retrieve relevant memories (configurable count)
         retrieval_count = self.working.memory_config.get("retrieval_count", 10)
         all_goals = (
             _ensure_list(state.get("short_term_goals"))
@@ -83,6 +83,7 @@ class Planner:
         if query:
             relevant = self.vector.search(query, n_results=retrieval_count)
             if relevant:
+                # Filter by relevance threshold if set
                 threshold = self.working.memory_config.get("relevance_threshold", 0.0)
                 if threshold > 0:
                     relevant = [r for r in relevant if (1.0 - (r.get("distance", 0) or 0)) >= threshold]
@@ -100,7 +101,6 @@ class Planner:
         sections = []
         sections.append(f'<iteration number="{iteration}">')
 
-        # Goals section
         sections.append("<goals>")
         sections.append(
             f"  <short_term>{json.dumps(_ensure_list(state.get('short_term_goals', state.get('goals', []))))}</short_term>"
@@ -110,12 +110,10 @@ class Planner:
         sections.append(f"  <active_task>{state.get('active_task', 'None')}</active_task>")
         sections.append("</goals>")
 
-        # Budget section
         sections.append(
             f'<budget remaining="${budget_status.get("remaining", 0):.2f}" percent_used="{pct_used:.0f}%" />'
         )
 
-        # Memory section
         sections.append(
             f'<memory retrieval_count="{mem_cfg["retrieval_count"]}" '
             f'threshold="{mem_cfg["relevance_threshold"]}" '
@@ -123,11 +121,9 @@ class Planner:
             f'injected="{len(self.working.injected_memories)}" />'
         )
 
-        # Last iteration outcome
         if self._last_iteration_summary:
             sections.append(f"<last_iteration_outcome>{self._last_iteration_summary}</last_iteration_outcome>")
 
-        # Short-term memories (scratchpad)
         if stm_entries:
             sections.append(f'<scratchpad slots="{len(stm_entries)}/50">')
             for i, m in enumerate(stm_entries):
@@ -139,12 +135,10 @@ class Planner:
                 '{"add": [...]}, {"remove": [indices]}, or {"replace": [...]}.'
             )
 
-        # Loop detection warning
         loop_warning = self._check_stuck_loop()
         if loop_warning:
             sections.append(f'<warning type="stuck_loop">{loop_warning}</warning>')
 
-        # Creator chat messages
         if creator_messages:
             sections.append("<creator_chat>")
             sections.append("Your creator is talking to you. You MUST include a `chat_reply` field.")
@@ -153,13 +147,21 @@ class Planner:
             sections.append("Respond in `chat_reply` (markdown OK). Also take actions if asked.")
             sections.append("</creator_chat>")
 
-        # Instructions
+        if iteration > 0 and iteration % 5 == 0:
+            sections.append('<goal_review required="true">')
+            sections.append(
+                "This is a goal review iteration. You MUST include `goals_update` in your response. "
+                "Review your short/mid/long-term goals. Update completed ones, add new ones, "
+                "remove stale ones. Reflect on progress."
+            )
+            sections.append("</goal_review>")
+
         sections.append("<instructions>")
-        sections.append("Plan your next actions. For each action, assign a `tier` based on complexity:")
-        sections.append("  - level1 / coding_level1: Complex reasoning, architecture, self-modification")
-        sections.append("  - level2 / coding_level2: Moderate tasks, research, multi-step edits")
-        sections.append("  - level3: Simple tool calls, file reads, web searches, status checks")
-        sections.append("Free models (Mistral, Devstral, Ollama) cost $0 — stay productive even with low budget.")
+        sections.append(
+            "Plan your next actions. Assign `tier` per action: "
+            "level1/coding_level1 (complex), level2/coding_level2 (moderate), level3 (simple). "
+            "Free models cost $0."
+        )
         sections.append("</instructions>")
 
         sections.append("</iteration>")
@@ -167,7 +169,6 @@ class Planner:
         iteration_msg = "\n".join(sections)
         self.working.add_message("user", iteration_msg)
 
-        # Always call at level1, enforce min_tier=level1 for chat, level2 for autonomous
         is_chat = bool(creator_messages)
         messages = self.working.get_messages_for_llm()
         response = await self.router.complete(
@@ -176,7 +177,7 @@ class Planner:
             temperature=0.7,
             max_tokens=4096,
             task_description="planning" if not is_chat else "chat_iteration",
-            min_tier="level1" if is_chat else "level2",
+            min_tier="level1",
         )
 
         # Parse response
@@ -186,7 +187,6 @@ class Planner:
         plan["_response_tokens"] = response.total_tokens
         self.working.add_message("assistant", response.content)
 
-        # Track action signature for loop detection
         self._track_action_sig(plan)
 
         log.info(
@@ -286,7 +286,7 @@ class Planner:
                     return plan
 
         return {
-            "thinking": content[:2000],
+            "thinking": content,
             "actions": [],
             "goals_update": None,
             "status_message": "Processing...",

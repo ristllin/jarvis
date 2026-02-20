@@ -113,7 +113,7 @@ class ResourceManagerTool(Tool):
         if not provider:
             return ToolResult(success=False, output="", error="'provider' is required")
 
-        result = await self.budget.add_provider(
+        await self.budget.add_provider(
             provider=provider,
             api_key=api_key,
             known_balance=known_balance,
