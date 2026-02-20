@@ -62,3 +62,10 @@ All notable changes from JARVIS self-modifications.
   - backend/requirements.txt
   - backend/tests/conftest.py
   - ... and 56 more
+## [0.2.3] - 2026-02-20
+
+**Commit:** Add crypto_trading tool (coingecko sim portfolio/signals) w/ tests
+
+### Files changed
+  - jarvis/tools/crypto_trading.py
+  - tests/test_crypto_trading.py
