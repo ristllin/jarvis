@@ -153,6 +153,52 @@ ngrok runs automatically when you start the stack. The dashboard is exposed at `
 - `ngrok-policy.yml` present (or ngrok will fail to start — comment out the ngrok service in docker-compose if you don't need remote access)
 
 
+## Repository Structure & Git Management
+
+### Why `jarvis/` and `backend/jarvis/` both exist
+
+**Historical duplication.** The Dockerfile copies `backend/` into the image, so `backend/` must contain the Python package. At some point a top-level `jarvis/` was added (possibly for local dev or as a "canonical" source). `build.sh` syncs `jarvis/` → `backend/jarvis/` before each build.
+
+**Practical rule:** `build.sh` syncs `jarvis/` → `backend/jarvis/` before build. So if you edit `backend/jarvis/`, run `rsync -a backend/jarvis/ jarvis/` *before* `./build.sh`, or your changes will be overwritten.
+
+### Repo layout
+
+```
+Jarvis/
+├── backend/              # Docker build context (COPY backend/ .)
+│   ├── jarvis/           # Python package (main.py, tools/, core/, etc.)
+│   ├── requirements.txt
+│   └── tests/
+├── jarvis/               # Duplicate of backend/jarvis/ — kept in sync by build.sh
+├── frontend/             # React dashboard
+├── data/                 # Persistent volume (bind-mounted)
+│   └── code/             # JARVIS's persisted source backup
+│       └── backend/      # Mirrors backend/ — restored to /app/ on boot
+├── Dockerfile            # Copies backend/ → /app/
+├── entrypoint.sh         # Restores data/code/ → /app/, starts services
+└── build.sh              # Syncs jarvis→backend, builds image, restarts
+```
+
+### Two separate git flows
+
+| Repo | Location | Who uses it | Purpose |
+|------|----------|-------------|---------|
+| **Creator's repo** | Your machine, `git status` | You (human) | Your source control. You push to `origin` (e.g. ristllin/jarvis). |
+| **JARVIS's backup repo** | `data/code/backend/.git` | JARVIS (self_modify) | Persists JARVIS's self-modifications. Remote = `GITHUB_REPO` (e.g. jarvisbotgd-dev/jarvis). |
+
+**Creator workflow:** Edit → commit → push to your repo. To get that code running: sync `backend/jarvis/` → `data/code/backend/jarvis/`, restart (see "Syncing Git → running JARVIS").
+
+**JARVIS workflow:** JARVIS edits files in `/app/` (and dual-writes to `/data/code/backend/`). It commits and pushes to `GITHUB_REPO`. That backup is separate from your repo — you may pull from it, merge, or keep them distinct.
+
+### Self-deployment vs your deploys
+
+- **Your deploy:** Rebuild image, sync backend → data, restart. The image + data/code determine what runs.
+- **JARVIS self-deploy:** `self_modify action=redeploy` — commits in data/code, restarts the container. Uses the code already in data/code (JARVIS's edits). Does not pull from your repo.
+
+To get JARVIS's self-modifications into your repo: pull from `GITHUB_REPO` (or whatever JARVIS pushes to), merge into your branch, push to your origin.
+
+---
+
 ## Architecture
 
 - **Backend**: Python / FastAPI, running a persistent async core loop
