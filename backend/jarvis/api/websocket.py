@@ -1,7 +1,6 @@
+import asyncio
 import json
-
-from fastapi import WebSocket
-
+from fastapi import WebSocket, WebSocketDisconnect
 from jarvis.observability.logger import get_logger
 
 log = get_logger("websocket")

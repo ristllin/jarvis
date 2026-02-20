@@ -3,15 +3,8 @@ const BASE = '/api'
 async function fetchJSON<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
     ...options,
   })
-  if (res.status === 401) {
-    const data = await res.json().catch(() => ({}))
-    const loginUrl = (data as { login_url?: string }).login_url || '/api/auth/login'
-    window.location.href = loginUrl
-    throw new Error('Not authenticated')
-  }
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()
 }
@@ -43,15 +36,9 @@ export const api = {
     }),
   health: () => fetchJSON<any>('/health'),
 
-  // Auth
-  getMe: () => fetchJSON<any>('/auth/me'),
-  logout: () => {
-    window.location.href = '/api/auth/logout'
-  },
-
   // Providers
   getProviders: () => fetchJSON<any>('/providers'),
-  updateProvider: (provider: string, data: { known_balance?: number; tier?: string; currency?: string; notes?: string; reset_spending?: boolean; api_key?: string }) =>
+  updateProvider: (provider: string, data: { known_balance?: number; tier?: string; currency?: string; notes?: string; reset_spending?: boolean }) =>
     fetchJSON<any>(`/providers/${provider}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -81,19 +68,6 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(config),
     }),
-
-  // Short-term memories
-  getShortTermMemories: () => fetchJSON<any>('/memory/short-term'),
-  updateShortTermMemories: (data: { add?: string[]; remove?: number[]; replace?: string[] }) =>
-    fetchJSON<any>('/memory/short-term', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-  clearShortTermMemories: () =>
-    fetchJSON<any>('/memory/short-term', { method: 'DELETE' }),
-
-  // Iteration history (debug panel)
-  getIterationHistory: (limit = 20) => fetchJSON<any>(`/iteration-history?limit=${limit}`),
 
   // Analytics
   getAnalytics: (range = '24h') => fetchJSON<any>(`/analytics?range=${range}`),

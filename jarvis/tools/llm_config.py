@@ -1,6 +1,6 @@
+from jarvis.tools.base import Tool, ToolResult
 from jarvis.llm.router import LLMRouter
 from jarvis.observability.logger import get_logger
-from jarvis.tools.base import Tool, ToolResult
 
 log = get_logger("tool.llm_config")
 
@@ -29,7 +29,7 @@ class LLMConfigTool(Tool):
                         lines.append(f"  [{avail}] {m['provider']}/{m['model']} (cost: {m['cost']})")
                 return ToolResult(success=True, output="\n".join(lines))
 
-            if action == "set_tier":
+            elif action == "set_tier":
                 tier_name = kwargs.get("tier")
                 models = kwargs.get("models")
                 if not tier_name or not models:
@@ -41,7 +41,8 @@ class LLMConfigTool(Tool):
                 log.info("tier_updated", tier=tier_name, models=models)
                 return ToolResult(success=True, output=f"Tier '{tier_name}' updated with {len(parsed)} models")
 
-            return ToolResult(success=False, output="", error=f"Unknown action: {action}. Use 'view' or 'set_tier'.")
+            else:
+                return ToolResult(success=False, output="", error=f"Unknown action: {action}. Use 'view' or 'set_tier'.")
 
         except Exception as e:
             return ToolResult(success=False, output="", error=str(e))
@@ -53,10 +54,7 @@ class LLMConfigTool(Tool):
             "parameters": {
                 "action": {"type": "string", "description": "'view' to see config, 'set_tier' to update a tier"},
                 "tier": {"type": "string", "description": "Tier name (for set_tier action)"},
-                "models": {
-                    "type": "array",
-                    "description": "Array of {provider, model, cost} objects (for set_tier action)",
-                },
+                "models": {"type": "array", "description": "Array of {provider, model, cost} objects (for set_tier action)"},
             },
             "required": ["action"],
         }

@@ -18,6 +18,7 @@ _oauth: OAuth | None = None
 def _get_oauth() -> OAuth:
     global _oauth
     if _oauth is None:
+        config = Config(env_file=".env")
         _oauth = OAuth()
         _oauth.register(
             name="google",
@@ -72,7 +73,7 @@ async def auth_callback(request: Request):
         token = await oauth.google.authorize_access_token(request)
     except Exception as e:
         log.warning("oauth_callback_failed", error=str(e))
-        raise HTTPException(status_code=400, detail="OAuth callback failed") from e
+        raise HTTPException(status_code=400, detail="OAuth callback failed")
     userinfo = token.get("userinfo") or {}
     email = (userinfo.get("email") or "").strip().lower()
     if not email:

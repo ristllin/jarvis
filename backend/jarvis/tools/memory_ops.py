@@ -1,6 +1,6 @@
-from jarvis.memory.models import MemoryEntry
-from jarvis.memory.vector import VectorMemory
 from jarvis.tools.base import Tool, ToolResult
+from jarvis.memory.vector import VectorMemory
+from jarvis.memory.models import MemoryEntry
 
 
 class MemoryWriteTool(Tool):
@@ -11,9 +11,7 @@ class MemoryWriteTool(Tool):
     def __init__(self, vector_memory: VectorMemory):
         self.vector = vector_memory
 
-    async def execute(
-        self, content: str, importance: float = 0.5, permanent: bool = False, source: str = "self", **kwargs
-    ) -> ToolResult:
+    async def execute(self, content: str, importance: float = 0.5, permanent: bool = False, source: str = "self", **kwargs) -> ToolResult:
         try:
             entry = MemoryEntry(
                 content=content,

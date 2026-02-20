@@ -62,7 +62,7 @@ __pycache__/
 GITIGNORE
     git init
     git add -A
-    git commit -m "JARVIS v0.2.0 — initial baseline" --allow-empty
+    git commit -m "JARVIS v0.1.1 — initial baseline" --allow-empty
     git tag baseline
 
     # Configure GitHub remote if GITHUB_REPO is set
@@ -88,36 +88,21 @@ else
         rsync -a --ignore-existing /frontend/ "$CODE_BACKUP/frontend/" --exclude='node_modules' --exclude='.git' 2>/dev/null || \
             cp -an /frontend/. "$CODE_BACKUP/frontend/" 2>/dev/null || true
 
-        # Force-update frontend config (allowedHosts for ngrok)
-        cp -f /frontend/vite.config.ts "$CODE_BACKUP/frontend/vite.config.ts" 2>/dev/null || true
-
         # Force-update critical infrastructure files that the image updated
         # (these are "ours" — from the developer, not JARVIS's modifications)
         for f in \
-            jarvis/version.py \
             jarvis/tools/registry.py \
             jarvis/tools/coding_agent.py \
             jarvis/tools/self_modify.py \
             jarvis/tools/resource_manager.py \
             jarvis/agents/__init__.py \
             jarvis/agents/coding.py \
-            jarvis/tools/coding_agent.py \
             jarvis/safety/prompt_builder.py \
             jarvis/core/loop.py \
             jarvis/core/planner.py \
             jarvis/core/executor.py \
-            jarvis/core/state.py \
-            jarvis/core/email_listener.py \
-            jarvis/tools/send_email.py \
-            jarvis/tools/skills.py \
-            jarvis/tools/http_request.py \
-            jarvis/tools/env_manager.py \
             jarvis/api/routes.py \
             jarvis/api/schemas.py \
-            jarvis/llm/router.py \
-            jarvis/llm/providers/grok.py \
-            jarvis/tools/coingecko.py \
-            jarvis/tools/self_analysis.py \
             jarvis/budget/tracker.py \
             jarvis/memory/working.py \
             jarvis/memory/vector.py \
@@ -140,15 +125,6 @@ else
         echo "[entrypoint] Image update merged and committed"
     fi
 
-    # ── 2c. Always fix stale version.py (e.g. 0.1.1 -> 0.2.0 after image update) ─
-    if [ -f "/app/jarvis/version.py" ]; then
-        BACKUP_VER=$(grep -E '__version__\s*=' "$CODE_BACKUP/backend/jarvis/version.py" 2>/dev/null | sed -n 's/.*"\([0-9.]*\)".*/\1/p' || echo "")
-        if [ -z "$BACKUP_VER" ] || [ "$BACKUP_VER" = "0.1.1" ] || [ "$BACKUP_VER" = "0.1.0" ]; then
-            cp -f /app/jarvis/version.py "$CODE_BACKUP/backend/jarvis/version.py"
-            echo "[entrypoint] Updated backup version.py from image (was $BACKUP_VER)"
-        fi
-    fi
-
     # ── 3. Check if last boot crashed (revert flag) ───────────────────────
     if [ -f "$REVERT_FLAG" ]; then
         echo "[entrypoint] REVERT FLAG detected — last boot crashed after code change"
@@ -167,18 +143,9 @@ else
     rsync -a --delete "$CODE_BACKUP/backend/" /app/ --exclude='.git' --exclude='__pycache__' 2>/dev/null || \
         cp -a "$CODE_BACKUP/backend/." /app/
 
-    # Preserve image's vite.config.ts (for allowedHosts/ngrok) before restore overwrites it
-    cp -f /frontend/vite.config.ts /tmp/vite.config.ts.bak 2>/dev/null || true
-
     echo "[entrypoint] Syncing /data/code/frontend/ -> /frontend/"
     rsync -a --delete "$CODE_BACKUP/frontend/" /frontend/ --exclude='node_modules' --exclude='.git' 2>/dev/null || \
         cp -a "$CODE_BACKUP/frontend/." /frontend/
-
-    # Restore image's vite.config.ts so ngrok/allowedHosts works
-    if [ -f /tmp/vite.config.ts.bak ]; then
-      cp -f /tmp/vite.config.ts.bak /frontend/vite.config.ts
-      cp -f /tmp/vite.config.ts.bak "$CODE_BACKUP/frontend/vite.config.ts"
-    fi
 fi
 
 # Also init git in /app if not already (for self_modify tool)
@@ -223,16 +190,8 @@ touch "$REVERT_FLAG"
 # ── 6. Start frontend (background) ────────────────────────────────────────
 echo "[entrypoint] Starting frontend..."
 cd /frontend
-nohup npx vite --host 0.0.0.0 --port 3000 > /tmp/vite.log 2>&1 &
+npx vite --host 0.0.0.0 --port 3000 &
 FRONTEND_PID=$!
-# Wait for Vite to bind (max 15s) — prevents 502 if backend starts before frontend is ready
-for i in $(seq 1 15); do
-  if curl -sf http://localhost:3000 > /dev/null 2>&1; then
-    echo "[entrypoint] Frontend ready"
-    break
-  fi
-  sleep 1
-done
 
 # ── 7. Start backend ──────────────────────────────────────────────────────
 echo "[entrypoint] Starting backend..."
@@ -254,5 +213,4 @@ cd /app
     fi
 ) &
 
-# --workers 1 required for SIGHUP graceful restart (self_modify redeploy)
-exec python -m uvicorn jarvis.main:app --host 0.0.0.0 --port 8000 --log-level info --workers 1
+exec python -m uvicorn jarvis.main:app --host 0.0.0.0 --port 8000 --log-level info

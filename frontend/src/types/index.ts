@@ -1,6 +1,5 @@
 export interface JarvisStatus {
   status: string
-  version?: string
   directive: string
   goals: string[]
   short_term_goals: string[]
@@ -13,7 +12,6 @@ export interface JarvisStatus {
   current_sleep_seconds?: number
   min_sleep_seconds?: number
   max_sleep_seconds?: number
-  current_model?: string | null
 }
 
 export interface ProviderStatus {
@@ -32,7 +30,6 @@ export interface BudgetStatus {
   spent: number
   remaining: number
   percent_used: number
-  source?: 'providers' | 'config'
   providers?: ProviderStatus[]
 }
 
@@ -67,19 +64,6 @@ export interface MemoryConfig {
   relevance_threshold: number
 }
 
-export interface TokenBreakdown {
-  system_prompt: number
-  injected_memories: number
-  messages: number
-}
-
-export interface PromptSection {
-  name: string
-  description: string
-  content: string
-  tokens: number
-}
-
 export interface WorkingMemorySnapshot {
   system_prompt_length: number
   system_prompt_tokens: number
@@ -89,8 +73,6 @@ export interface WorkingMemorySnapshot {
   total_tokens_estimate: number
   max_context_tokens: number
   config: MemoryConfig
-  token_breakdown?: TokenBreakdown
-  prompt_sections?: PromptSection[]
 }
 
 export interface LogEntry {

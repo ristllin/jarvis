@@ -3,21 +3,20 @@ import { api } from '../api/client'
 import type { MemoryStats, VectorMemoryEntry, BlobEntry, WorkingMemorySnapshot, MemoryConfig } from '../types'
 import {
   Database, HardDrive, Brain, Search, Trash2, Star, Clock, ChevronDown, ChevronRight,
-  Settings, RefreshCw, Filter, Eye, Zap, Shield, StickyNote, Plus, X,
+  Settings, RefreshCw, Filter, Eye, Zap, Shield,
 } from 'lucide-react'
 
 interface Props {
   stats: MemoryStats | null
 }
 
-type SubTab = 'overview' | 'short-term' | 'vector' | 'blob' | 'working' | 'config'
+type SubTab = 'overview' | 'vector' | 'blob' | 'working' | 'config'
 
 export function MemoryPanel({ stats }: Props) {
   const [subTab, setSubTab] = useState<SubTab>('overview')
 
   const subTabs: { id: SubTab; label: string; icon: React.ReactNode }[] = [
     { id: 'overview', label: 'Overview', icon: <Brain size={16} /> },
-    { id: 'short-term', label: 'Scratch Pad', icon: <StickyNote size={16} /> },
     { id: 'working', label: 'Working Context', icon: <Zap size={16} /> },
     { id: 'vector', label: 'Vector Memory', icon: <Database size={16} /> },
     { id: 'blob', label: 'Blob Storage', icon: <HardDrive size={16} /> },
@@ -29,12 +28,12 @@ export function MemoryPanel({ stats }: Props) {
       <h2 className="text-xl font-bold">Memory System</h2>
 
       {/* Sub-tabs */}
-      <div className="flex gap-1 bg-gray-900 rounded-lg p-1 border border-gray-800 overflow-x-auto">
+      <div className="flex gap-1 bg-gray-900 rounded-lg p-1 border border-gray-800">
         {subTabs.map((t) => (
           <button
             key={t.id}
             onClick={() => setSubTab(t.id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm transition-colors whitespace-nowrap ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm transition-colors ${
               subTab === t.id
                 ? 'bg-gray-800 text-jarvis-400'
                 : 'text-gray-400 hover:text-gray-200'
@@ -47,7 +46,6 @@ export function MemoryPanel({ stats }: Props) {
       </div>
 
       {subTab === 'overview' && <OverviewTab stats={stats} />}
-      {subTab === 'short-term' && <ShortTermMemoryTab />}
       {subTab === 'working' && <WorkingContextTab />}
       {subTab === 'vector' && <VectorBrowserTab />}
       {subTab === 'blob' && <BlobBrowserTab />}
@@ -61,30 +59,15 @@ export function MemoryPanel({ stats }: Props) {
 
 function OverviewTab({ stats }: { stats: MemoryStats | null }) {
   const [working, setWorking] = useState<WorkingMemorySnapshot | null>(null)
-  const [stmCount, setStmCount] = useState<number>(0)
 
   useEffect(() => {
     api.getWorkingMemory().then(setWorking).catch(() => {})
-    api.getShortTermMemories().then((d) => setStmCount(d.count || 0)).catch(() => {})
   }, [])
 
   if (!stats) return <p className="text-gray-500">Loading memory stats...</p>
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-      {/* Short-term card */}
-      <div className="bg-gray-900 border border-gray-800 rounded-lg p-5">
-        <div className="flex items-center gap-2 mb-3">
-          <StickyNote size={20} className="text-orange-400" />
-          <h3 className="font-medium">Scratch Pad</h3>
-        </div>
-        <div className="text-3xl font-bold text-orange-400">{stmCount}</div>
-        <p className="text-xs text-gray-500 mt-1">short-term notes (max 50)</p>
-        <p className="text-xs text-gray-600 mt-2">
-          Rolling operational notes. Auto-expire after 48h, oldest evicted at cap.
-        </p>
-      </div>
-
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       {/* Vector card */}
       <div className="bg-gray-900 border border-gray-800 rounded-lg p-5">
         <div className="flex items-center gap-2 mb-3">
@@ -139,265 +122,6 @@ function OverviewTab({ stats }: { stats: MemoryStats | null }) {
   )
 }
 
-
-/* ─── Short-Term Memory Tab (Scratch Pad) ──────────────────────────── */
-
-function ShortTermMemoryTab() {
-  const [memories, setMemories] = useState<any[]>([])
-  const [count, setCount] = useState(0)
-  const [maxEntries, setMaxEntries] = useState(50)
-  const [loading, setLoading] = useState(true)
-  const [newNote, setNewNote] = useState('')
-  const [adding, setAdding] = useState(false)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const data = await api.getShortTermMemories()
-      setMemories(data.memories || [])
-      setCount(data.count || 0)
-      setMaxEntries(data.max_entries || 50)
-    } catch (e) {
-      console.error(e)
-    }
-    setLoading(false)
-  }, [])
-
-  useEffect(() => { load() }, [load])
-
-  const handleAdd = async () => {
-    if (!newNote.trim()) return
-    setAdding(true)
-    try {
-      await api.updateShortTermMemories({ add: [newNote.trim()] })
-      setNewNote('')
-      await load()
-    } catch (e) {
-      console.error(e)
-    }
-    setAdding(false)
-  }
-
-  const handleRemove = async (idx: number) => {
-    try {
-      await api.updateShortTermMemories({ remove: [idx] })
-      await load()
-    } catch (e) {
-      console.error(e)
-    }
-  }
-
-  const handleClear = async () => {
-    if (!confirm('Clear all short-term memories?')) return
-    try {
-      await api.clearShortTermMemories()
-      await load()
-    } catch (e) {
-      console.error(e)
-    }
-  }
-
-  const formatAge = (isoStr: string) => {
-    try {
-      const created = new Date(isoStr)
-      const now = new Date()
-      const diffMs = now.getTime() - created.getTime()
-      const mins = Math.floor(diffMs / 60000)
-      if (mins < 60) return `${mins}m ago`
-      const hours = Math.floor(mins / 60)
-      if (hours < 24) return `${hours}h ago`
-      return `${Math.floor(hours / 24)}d ago`
-    } catch {
-      return '?'
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold flex items-center gap-2">
-            <StickyNote size={20} className="text-orange-400" />
-            Short-Term Memories
-            <span className="text-sm font-normal text-gray-500">({count}/{maxEntries})</span>
-          </h3>
-          <p className="text-xs text-gray-500 mt-1">
-            Rolling scratch pad — operational notes that persist across iterations. Auto-expires after 48h.
-            JARVIS and tool results auto-add entries here.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button onClick={load} className="flex items-center gap-1 px-3 py-1.5 rounded bg-gray-800 text-gray-300 text-sm hover:bg-gray-700">
-            <RefreshCw size={14} />
-            Refresh
-          </button>
-          {count > 0 && (
-            <button onClick={handleClear} className="flex items-center gap-1 px-3 py-1.5 rounded bg-red-900/30 text-red-400 text-sm hover:bg-red-900/50">
-              <Trash2 size={14} />
-              Clear All
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Capacity bar */}
-      <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
-        <div className="flex justify-between text-xs text-gray-500 mb-1">
-          <span>Capacity</span>
-          <span>{count} / {maxEntries} slots used</span>
-        </div>
-        <div className="w-full bg-gray-800 rounded-full h-2">
-          <div
-            className={`h-2 rounded-full transition-all ${
-              count / maxEntries > 0.8 ? 'bg-red-500' : count / maxEntries > 0.5 ? 'bg-yellow-500' : 'bg-orange-500'
-            }`}
-            style={{ width: `${Math.min(100, (count / maxEntries) * 100)}%` }}
-          />
-        </div>
-      </div>
-
-      {/* Add note */}
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={newNote}
-          onChange={(e) => setNewNote(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-          placeholder="Add a note for JARVIS..."
-          className="flex-1 px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-200 focus:outline-none focus:border-orange-400"
-        />
-        <button
-          onClick={handleAdd}
-          disabled={adding || !newNote.trim()}
-          className="flex items-center gap-1 px-4 py-2 bg-orange-600 text-white rounded-lg text-sm hover:bg-orange-500 disabled:opacity-50"
-        >
-          <Plus size={14} />
-          Add
-        </button>
-      </div>
-
-      {/* Memory list */}
-      {loading ? (
-        <div className="text-gray-500 py-4">Loading...</div>
-      ) : memories.length === 0 ? (
-        <div className="text-gray-500 py-8 text-center">
-          No short-term memories yet. They'll appear as JARVIS runs iterations and executes tools.
-        </div>
-      ) : (
-        <div className="bg-gray-900 border border-gray-800 rounded-lg divide-y divide-gray-800 max-h-[600px] overflow-auto">
-          {memories.map((mem, idx) => (
-            <div key={idx} className="px-4 py-3 group hover:bg-gray-800/50">
-              <div className="flex items-start gap-3">
-                <span className="text-xs font-mono text-gray-600 mt-0.5 w-6 text-right">[{idx}]</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-gray-300">{mem.content}</p>
-                  <div className="flex items-center gap-3 mt-1">
-                    <span className="text-xs text-gray-600 flex items-center gap-1">
-                      <Clock size={10} />
-                      {formatAge(mem.created_at)}
-                    </span>
-                    {mem.iteration > 0 && (
-                      <span className="text-xs text-gray-600">iter #{mem.iteration}</span>
-                    )}
-                  </div>
-                </div>
-                <button
-                  onClick={() => handleRemove(idx)}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-600 hover:text-red-400 p-1"
-                  title="Remove"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-
-/* ─── Prompt Sections Viewer ─────────────────────────────────────────── */
-
-function PromptSectionsViewer({ sections, maxTokens }: { sections: { name: string; description: string; content: string; tokens: number }[]; maxTokens: number }) {
-  const [expandedSection, setExpandedSection] = useState<number | null>(0)
-  const [search, setSearch] = useState('')
-
-  const filteredContent = expandedSection != null && sections[expandedSection]
-    ? sections[expandedSection].content
-    : ''
-  const searchHighlight = search.trim().toLowerCase()
-
-  return (
-    <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
-        <h4 className="font-medium text-sm flex items-center gap-2">
-          <Eye size={16} className="text-jarvis-400" />
-          Prompt Construction
-        </h4>
-        <span className="text-xs text-gray-500">How the context is built for each LLM call</span>
-      </div>
-      <div className="flex">
-        {/* Section tabs */}
-        <div className="w-48 border-r border-gray-800 flex flex-col">
-          {sections.map((s, idx) => (
-            <button
-              key={idx}
-              onClick={() => setExpandedSection(idx)}
-              className={`px-4 py-3 text-left text-sm transition-colors border-b border-gray-800/50 last:border-0 ${
-                expandedSection === idx ? 'bg-gray-800 text-jarvis-400' : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
-              }`}
-            >
-              <div className="font-medium">{s.name}</div>
-              <div className="text-xs text-gray-500 mt-0.5">{(s.tokens / 1000).toFixed(1)}k tokens</div>
-            </button>
-          ))}
-        </div>
-        {/* Content area */}
-        <div className="flex-1 flex flex-col min-w-0">
-          <div className="px-4 py-2 border-b border-gray-800 flex items-center gap-2">
-            <input
-              type="text"
-              placeholder="Search in prompt..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-jarvis-500"
-            />
-            {expandedSection != null && (
-              <span className="text-xs text-gray-500">
-                {sections[expandedSection].description}
-              </span>
-            )}
-          </div>
-          <div className="p-4 max-h-[400px] overflow-auto">
-            <pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono leading-relaxed">
-              {!filteredContent ? (
-                <span className="text-gray-500">Select a section to view</span>
-              ) : searchHighlight ? (() => {
-                try {
-                  const escaped = searchHighlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-                  const parts = filteredContent.split(new RegExp(`(${escaped})`, 'gi'))
-                  return parts.map((part, i) =>
-                    part.toLowerCase() === searchHighlight ? (
-                      <mark key={i} className="bg-yellow-600/50 text-yellow-100">{part}</mark>
-                    ) : (
-                      <span key={i}>{part}</span>
-                    )
-                  )
-                } catch {
-                  return filteredContent
-                }
-              })() : (
-                filteredContent
-              )}
-            </pre>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 /* ─── Working Context Tab ───────────────────────────────────────────── */
 
@@ -468,60 +192,16 @@ function WorkingContextTab() {
             <span>Context Window Usage</span>
             <span>{tokenPct.toFixed(1)}%</span>
           </div>
-          <div className="w-full bg-gray-800 rounded-lg h-3 flex overflow-hidden">
-            {snapshot.token_breakdown ? (
-              <>
-                {snapshot.token_breakdown.system_prompt > 0 && (
-                  <div
-                    className="bg-amber-500/90 hover:bg-amber-400 transition-colors min-w-[2px]"
-                    style={{ width: `${(snapshot.token_breakdown.system_prompt / snapshot.max_context_tokens) * 100}%` }}
-                    title={`System prompt: ${(snapshot.token_breakdown.system_prompt / 1000).toFixed(1)}k tokens`}
-                  />
-                )}
-                {snapshot.token_breakdown.injected_memories > 0 && (
-                  <div
-                    className="bg-purple-500/90 hover:bg-purple-400 transition-colors min-w-[2px]"
-                    style={{ width: `${(snapshot.token_breakdown.injected_memories / snapshot.max_context_tokens) * 100}%` }}
-                    title={`Injected memories: ${(snapshot.token_breakdown.injected_memories / 1000).toFixed(1)}k tokens`}
-                  />
-                )}
-                {snapshot.token_breakdown.messages > 0 && (
-                  <div
-                    className="bg-blue-500/90 hover:bg-blue-400 transition-colors min-w-[2px]"
-                    style={{ width: `${(snapshot.token_breakdown.messages / snapshot.max_context_tokens) * 100}%` }}
-                    title={`Conversation: ${(snapshot.token_breakdown.messages / 1000).toFixed(1)}k tokens`}
-                  />
-                )}
-              </>
-            ) : (
-              <div
-                className={`h-full rounded-lg transition-all ${
-                  tokenPct > 80 ? 'bg-red-500' : tokenPct > 50 ? 'bg-yellow-500' : 'bg-green-500'
-                }`}
-                style={{ width: `${Math.min(100, tokenPct)}%` }}
-              />
-            )}
+          <div className="w-full bg-gray-800 rounded-full h-2">
+            <div
+              className={`h-2 rounded-full transition-all ${
+                tokenPct > 80 ? 'bg-red-500' : tokenPct > 50 ? 'bg-yellow-500' : 'bg-green-500'
+              }`}
+              style={{ width: `${Math.min(100, tokenPct)}%` }}
+            />
           </div>
-          {snapshot.token_breakdown && (
-            <div className="flex gap-4 mt-2 text-xs">
-              <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded bg-amber-500" /> System prompt ({(snapshot.token_breakdown.system_prompt / 1000).toFixed(1)}k)
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded bg-purple-500" /> Memories ({(snapshot.token_breakdown.injected_memories / 1000).toFixed(1)}k)
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded bg-blue-500" /> Conversation ({(snapshot.token_breakdown.messages / 1000).toFixed(1)}k)
-              </span>
-            </div>
-          )}
         </div>
       </div>
-
-      {/* Prompt construction — browse how the prompt is built */}
-      {snapshot.prompt_sections && snapshot.prompt_sections.length > 0 && (
-        <PromptSectionsViewer sections={snapshot.prompt_sections} maxTokens={snapshot.max_context_tokens} />
-      )}
 
       {/* Injected memories list */}
       <div className="bg-gray-900 border border-gray-800 rounded-lg">

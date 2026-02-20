@@ -1,21 +1,8 @@
-from jarvis.config import settings
 from jarvis.llm.base import LLMProvider, LLMResponse
+from jarvis.config import settings
 from jarvis.observability.logger import get_logger
 
 log = get_logger("llm.mistral")
-
-# Devstral models — specialized for agentic coding tasks
-# Free on Mistral API, 256k context, 72.2% SWE-Bench Verified
-DEVSTRAL_MODELS = [
-    "devstral-small-2505",
-    "devstral-small-2507",
-    "devstral-medium-2507",
-]
-
-GENERAL_MODELS = [
-    "mistral-large-latest",
-    "mistral-small-latest",
-]
 
 
 class MistralProvider(LLMProvider):
@@ -27,7 +14,6 @@ class MistralProvider(LLMProvider):
     def _get_client(self):
         if self._client is None and settings.mistral_api_key:
             from mistralai import Mistral
-
             self._client = Mistral(api_key=settings.mistral_api_key)
         return self._client
 
@@ -35,7 +21,7 @@ class MistralProvider(LLMProvider):
         return bool(settings.mistral_api_key)
 
     def get_models(self) -> list[str]:
-        return GENERAL_MODELS + DEVSTRAL_MODELS
+        return ["mistral-large-latest", "mistral-small-latest"]
 
     async def complete(
         self,

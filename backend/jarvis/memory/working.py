@@ -8,10 +8,10 @@ MAX_CONTEXT_TOKENS = 120_000
 
 # Default memory retrieval config
 DEFAULT_MEMORY_CONFIG = {
-    "retrieval_count": 10,  # How many vector memories to inject per iteration
-    "max_context_tokens": 120_000,  # Max working context size in tokens
-    "decay_factor": 0.95,  # Importance decay per maintenance cycle
-    "relevance_threshold": 0.0,  # Min relevance score to include (0 = include all)
+    "retrieval_count": 10,           # How many vector memories to inject per iteration
+    "max_context_tokens": 120_000,   # Max working context size in tokens
+    "decay_factor": 0.95,            # Importance decay per maintenance cycle
+    "relevance_threshold": 0.0,      # Min relevance score to include (0 = include all)
 }
 
 
@@ -53,77 +53,15 @@ class WorkingMemory:
 
     def get_working_snapshot(self) -> dict:
         """Get a snapshot of current working memory for the UI."""
-        # Token breakdown for segmented bar
-        system_tokens = len(self.system_prompt) // 4
-        injected_chars = sum(len(m) for m in self.injected_memories)
-        injected_header = (
-            (len("\n\n## RELEVANT MEMORIES\n") + sum(len(f"- {m}\n") for m in self.injected_memories))
-            if self.injected_memories
-            else 0
-        )
-        injected_tokens = (injected_chars + injected_header) // 4
-        messages_tokens = sum(len(msg.get("content", "")) for msg in self.messages) // 4
-
-        # Build prompt sections for inspection (as sent to LLM)
-        sections = []
-        sections.append(
-            {
-                "name": "System Prompt",
-                "description": "Directive, goals, budget, tools, credentials",
-                "content": self.system_prompt,
-                "tokens": system_tokens,
-            }
-        )
-        if self.injected_memories:
-            mem_block = "\n\n## RELEVANT MEMORIES\n" + "\n".join(f"- {m}" for m in self.injected_memories)
-            sections.append(
-                {
-                    "name": "Injected Memories",
-                    "description": f"{len(self.injected_memories)} memories retrieved by relevance",
-                    "content": mem_block,
-                    "tokens": injected_tokens,
-                }
-            )
-        if self.messages:
-            msg_block = "\n\n".join(
-                f"**{msg.get('role', 'unknown').upper()}:**\n{msg.get('content', '')}" for msg in self.messages
-            )
-            sections.append(
-                {
-                    "name": "Conversation",
-                    "description": f"{len(self.messages)} messages",
-                    "content": msg_block,
-                    "tokens": messages_tokens,
-                }
-            )
-
-        # Truncate messages for the API response (full content can be huge)
-        truncated_messages = []
-        for msg in self.messages:
-            truncated_messages.append(
-                {
-                    "role": msg.get("role", ""),
-                    "content": msg.get("content", "")[:2000],
-                    "full_length": len(msg.get("content", "")),
-                }
-            )
-
         return {
             "system_prompt_length": len(self.system_prompt),
-            "system_prompt_tokens": system_tokens,
+            "system_prompt_tokens": len(self.system_prompt) // 4,
             "message_count": len(self.messages),
-            "messages": truncated_messages,
             "injected_memory_count": len(self.injected_memories),
             "injected_memories": self.injected_memories_raw[:50],  # Cap for API response
             "total_tokens_estimate": self._estimate_tokens(),
             "max_context_tokens": self.memory_config["max_context_tokens"],
             "config": dict(self.memory_config),
-            "token_breakdown": {
-                "system_prompt": system_tokens,
-                "injected_memories": injected_tokens,
-                "messages": messages_tokens,
-            },
-            "prompt_sections": sections,
         }
 
     def get_messages_for_llm(self) -> list[dict]:

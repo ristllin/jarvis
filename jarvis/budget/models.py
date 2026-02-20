@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from typing import Optional
 
 
 class UsageRecord(BaseModel):
@@ -7,7 +8,7 @@ class UsageRecord(BaseModel):
     input_tokens: int
     output_tokens: int
     cost_usd: float
-    task_description: str | None = None
+    task_description: Optional[str] = None
 
 
 class BudgetSummary(BaseModel):

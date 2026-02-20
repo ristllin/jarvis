@@ -1,5 +1,4 @@
 import asyncio
-
 from jarvis.tools.base import Tool, ToolResult
 
 
@@ -11,23 +10,10 @@ class GitTool(Tool):
     async def execute(self, command: str, **kwargs) -> ToolResult:
         # Only allow safe git commands
         allowed_prefixes = [
-            "git init",
-            "git clone",
-            "git status",
-            "git add",
-            "git commit",
-            "git log",
-            "git diff",
-            "git branch",
-            "git checkout",
-            "git merge",
-            "git pull",
-            "git push",
-            "git remote",
-            "git stash",
-            "git tag",
-            "git show",
-            "git fetch",
+            "git init", "git clone", "git status", "git add", "git commit",
+            "git log", "git diff", "git branch", "git checkout", "git merge",
+            "git pull", "git push", "git remote", "git stash", "git tag",
+            "git show", "git fetch",
         ]
         cmd = command.strip()
         if not any(cmd.startswith(prefix) for prefix in allowed_prefixes):
@@ -51,7 +37,7 @@ class GitTool(Tool):
                 output=output.strip(),
                 error=None if proc.returncode == 0 else f"Exit code: {proc.returncode}",
             )
-        except TimeoutError:
+        except asyncio.TimeoutError:
             return ToolResult(success=False, output="", error="Git command timed out")
         except Exception as e:
             return ToolResult(success=False, output="", error=str(e))

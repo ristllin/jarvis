@@ -1,10 +1,9 @@
-import json
-import logging
-import os
-import sys
-from datetime import UTC, datetime
-
 import structlog
+import logging
+import sys
+import os
+import json
+from datetime import datetime, timezone
 
 
 def setup_logging():
@@ -42,7 +41,7 @@ class FileLogger:
         os.makedirs(self.log_dir, exist_ok=True)
 
     def log(self, event: str, **kwargs):
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         filename = now.strftime("%Y-%m-%d.jsonl")
         entry = {
             "timestamp": now.isoformat(),

@@ -40,14 +40,6 @@ export function ControlBar({ status, onRefresh }: Props) {
                 <span className="text-xs text-gray-400 max-w-md truncate">{status.active_task}</span>
               </>
             )}
-            {status.current_model && (
-              <>
-                <span className="text-gray-600">|</span>
-                <span className="text-xs text-gray-500 font-mono">
-                  {(status as any).current_provider ? `${(status as any).current_provider}/` : ''}{status.current_model}
-                </span>
-              </>
-            )}
           </>
         )}
       </div>

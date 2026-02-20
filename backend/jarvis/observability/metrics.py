@@ -1,6 +1,7 @@
-from sqlalchemy import func, select
-
-from jarvis.models import BudgetUsage, MetricsRecord, ToolUsageLog
+from datetime import datetime, timezone
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
+from jarvis.models import MetricsRecord, BudgetUsage, ToolUsageLog
 
 
 class MetricsCollector:
@@ -20,7 +21,9 @@ class MetricsCollector:
     async def get_summary(self) -> dict:
         async with self.session_factory() as session:
             tool_count = await session.scalar(select(func.count(ToolUsageLog.id)))
-            tool_success = await session.scalar(select(func.count(ToolUsageLog.id)).where(ToolUsageLog.success == True))
+            tool_success = await session.scalar(
+                select(func.count(ToolUsageLog.id)).where(ToolUsageLog.success == True)
+            )
             total_cost = await session.scalar(select(func.sum(BudgetUsage.cost_usd))) or 0.0
 
             return {

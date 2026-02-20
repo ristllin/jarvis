@@ -1,5 +1,5 @@
-from jarvis.config import settings
 from jarvis.llm.base import LLMProvider, LLMResponse
+from jarvis.config import settings
 from jarvis.observability.logger import get_logger
 
 log = get_logger("llm.openai")
@@ -14,7 +14,6 @@ class OpenAIProvider(LLMProvider):
     def _get_client(self):
         if self._client is None and settings.openai_api_key:
             from openai import AsyncOpenAI
-
             self._client = AsyncOpenAI(api_key=settings.openai_api_key)
         return self._client
 

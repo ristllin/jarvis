@@ -1,6 +1,6 @@
 # JARVIS — Persistent Autonomous AI Entity
 
-**Version 0.2.0 — Phase 1 MVP**
+**Version 0.1.1 — Phase 1 MVP**
 
 JARVIS is a persistent autonomous AI system that runs continuously, maintains long-term memory, has a configurable directive, and operates under strict safety constraints aligned with its creator.
 
@@ -13,28 +13,15 @@ JARVIS is **not** a chatbot. It is a persistent agent with an internal planning 
 cp .env.example .env
 # Edit .env with your actual keys
 
-# 2. Build and run
-docker compose up -d --build
+# 2. Build the Docker image
+bash build.sh
 
-# 3. Open the dashboard
+# 3. Run
+docker compose up -d
+
+# 4. Open the dashboard
 open http://localhost:3000
-# Or via nginx (port 80): open http://localhost
 ```
-
-The ngrok service starts automatically and exposes the dashboard at `https://collins-saxicolous-moveably.ngrok-free.dev` (Basic Auth: see `ngrok-policy.example.yml`). Ensure `NGROK_AUTHTOKEN` is in `.env` and `ngrok-policy.yml` exists.
-
-## Remote Access (ngrok)
-
-ngrok runs automatically when you start the stack. The dashboard is exposed at `https://collins-saxicolous-moveably.ngrok-free.dev`.
-
-**Basic Auth** (configured in `ngrok-policy.yml`):
-- Copy `ngrok-policy.example.yml` to `ngrok-policy.yml` and set your username:password
-- Or create `ngrok-policy.yml` with: `ristlin:your-strong-password`
-- This file is in `.gitignore` (contains credentials)
-
-**Requirements:**
-- `NGROK_AUTHTOKEN` in `.env` (from [ngrok dashboard](https://dashboard.ngrok.com))
-- `ngrok-policy.yml` present (or ngrok will fail to start — comment out the ngrok service in docker-compose if you don't need remote access)
 
 ## Architecture
 

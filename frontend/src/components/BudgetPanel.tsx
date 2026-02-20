@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api/client'
 import type { BudgetStatus, ProviderStatus } from '../types'
-import { DollarSign, RefreshCw, Plus, Check, X, Edit2, Key, Eye, EyeOff } from 'lucide-react'
+import { DollarSign, RefreshCw, Plus, Check, X, Edit2 } from 'lucide-react'
 
 interface Props {
   budget: BudgetStatus | null
@@ -18,7 +18,6 @@ const PROVIDER_ICONS: Record<string, string> = {
   anthropic: '🅰️',
   openai: '🤖',
   mistral: '🌬️',
-  grok: '⚡',
   tavily: '🔍',
   ollama: '🦙',
 }
@@ -59,10 +58,7 @@ export function BudgetPanel({ budget, onRefresh }: Props) {
   const [editBalance, setEditBalance] = useState('')
   const [editNotes, setEditNotes] = useState('')
   const [editCurrency, setEditCurrency] = useState('')
-  const [editApiKey, setEditApiKey] = useState('')
   const [showAddForm, setShowAddForm] = useState(false)
-  const [overrideError, setOverrideError] = useState<string | null>(null)
-  const [overrideSuccess, setOverrideSuccess] = useState(false)
   const [newProvider, setNewProvider] = useState({
     provider: '', api_key: '', known_balance: '', tier: 'unknown', currency: 'USD', notes: ''
   })
@@ -84,21 +80,10 @@ export function BudgetPanel({ budget, onRefresh }: Props) {
 
   const handleOverride = async () => {
     const val = parseFloat(newCap)
-    if (isNaN(val) || val <= 0) {
-      setOverrideError('Enter a valid positive number')
-      return
-    }
-    setOverrideError(null)
-    setOverrideSuccess(false)
-    try {
-      await api.overrideBudget(val)
-      setNewCap('')
-      setOverrideSuccess(true)
-      onRefresh()
-      setTimeout(() => setOverrideSuccess(false), 3000)
-    } catch (e) {
-      setOverrideError('Failed to update. Try again.')
-    }
+    if (isNaN(val) || val <= 0) return
+    await api.overrideBudget(val)
+    setNewCap('')
+    onRefresh()
   }
 
   const startEdit = (p: ProviderStatus) => {
@@ -106,7 +91,6 @@ export function BudgetPanel({ budget, onRefresh }: Props) {
     setEditBalance(p.known_balance != null ? String(p.known_balance) : '')
     setEditNotes(p.notes || '')
     setEditCurrency(p.currency || 'USD')
-    setEditApiKey('')
   }
 
   const saveEdit = async () => {
@@ -119,10 +103,8 @@ export function BudgetPanel({ budget, onRefresh }: Props) {
     }
     if (editNotes) update.notes = editNotes
     if (editCurrency) update.currency = editCurrency
-    if (editApiKey.trim()) update.api_key = editApiKey.trim()
     await api.updateProvider(editingProvider, update)
     setEditingProvider(null)
-    setEditApiKey('')
     onRefresh()
     loadProviders()
   }
@@ -290,11 +272,9 @@ export function BudgetPanel({ budget, onRefresh }: Props) {
               editBalance={editBalance}
               editNotes={editNotes}
               editCurrency={editCurrency}
-              editApiKey={editApiKey}
               onEditBalance={setEditBalance}
               onEditNotes={setEditNotes}
               onEditCurrency={setEditCurrency}
-              onEditApiKey={setEditApiKey}
               onStartEdit={() => startEdit(p)}
               onSave={saveEdit}
               onCancel={() => setEditingProvider(null)}
@@ -306,15 +286,12 @@ export function BudgetPanel({ budget, onRefresh }: Props) {
       {/* Monthly cap override */}
       <div className="bg-gray-900 border border-gray-800 rounded-lg p-5">
         <h3 className="text-sm font-medium text-gray-400 mb-3">Override Monthly Cap</h3>
-        <p className="text-xs text-gray-500 mb-2">Increase the overall budget cap (current: ${budget.monthly_cap.toFixed(2)})</p>
-        <div className="flex gap-3 items-center">
+        <div className="flex gap-3">
           <input
             type="number"
-            min="1"
-            step="1"
             value={newCap}
-            onChange={(e) => { setNewCap(e.target.value); setOverrideError(null) }}
-            placeholder="e.g. 200"
+            onChange={(e) => setNewCap(e.target.value)}
+            placeholder="New cap (USD)"
             className="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-jarvis-500"
           />
           <button
@@ -324,8 +301,6 @@ export function BudgetPanel({ budget, onRefresh }: Props) {
             Update Cap
           </button>
         </div>
-        {overrideError && <p className="text-red-400 text-sm mt-2">{overrideError}</p>}
-        {overrideSuccess && <p className="text-green-400 text-sm mt-2">Cap updated. Refreshing...</p>}
       </div>
     </div>
   )
@@ -337,11 +312,9 @@ function ProviderCard({
   editBalance,
   editNotes,
   editCurrency,
-  editApiKey,
   onEditBalance,
   onEditNotes,
   onEditCurrency,
-  onEditApiKey,
   onStartEdit,
   onSave,
   onCancel,
@@ -351,16 +324,13 @@ function ProviderCard({
   editBalance: string
   editNotes: string
   editCurrency: string
-  editApiKey: string
   onEditBalance: (v: string) => void
   onEditNotes: (v: string) => void
   onEditCurrency: (v: string) => void
-  onEditApiKey: (v: string) => void
   onStartEdit: () => void
   onSave: () => void
   onCancel: () => void
 }) {
-  const [showApiKey, setShowApiKey] = useState(false)
   const icon = PROVIDER_ICONS[p.provider] || '🔌'
   const tierColor = TIER_COLORS[p.tier] || 'gray'
   const currency = p.currency || 'USD'
@@ -422,27 +392,6 @@ function ProviderCard({
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
-            </div>
-          </div>
-          <div>
-            <label className="text-[10px] text-gray-500 uppercase flex items-center gap-1">
-              <Key size={10} /> API Key
-            </label>
-            <div className="relative">
-              <input
-                type={showApiKey ? 'text' : 'password'}
-                value={editApiKey}
-                onChange={e => onEditApiKey(e.target.value)}
-                placeholder="Enter new key to update (leave blank to keep current)"
-                className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 pr-8 text-sm focus:outline-none focus:border-jarvis-500"
-              />
-              <button
-                type="button"
-                onClick={() => setShowApiKey(!showApiKey)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
-              >
-                {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
-              </button>
             </div>
           </div>
           <div>

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
-
 from pydantic import BaseModel
+from typing import Optional
 
 
 class LLMResponse(BaseModel):
@@ -10,8 +10,8 @@ class LLMResponse(BaseModel):
     input_tokens: int = 0
     output_tokens: int = 0
     total_tokens: int = 0
-    finish_reason: str | None = None
-    raw_response: dict | None = None
+    finish_reason: Optional[str] = None
+    raw_response: Optional[dict] = None
 
 
 class LLMProvider(ABC):

@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from typing import Optional
 
 
 class DirectiveUpdate(BaseModel):
@@ -19,17 +20,15 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
-    model: str | None = None
-    provider: str | None = None
-    tokens_used: int | None = None
-    actions_taken: list[dict] | None = None
-    agentic: bool = True
+    model: Optional[str] = None
+    provider: Optional[str] = None
+    tokens_used: Optional[int] = None
 
 
 class GoalsUpdate(BaseModel):
-    short_term: list[str] | None = None
-    mid_term: list[str] | None = None
-    long_term: list[str] | None = None
+    short_term: Optional[list[str]] = None
+    mid_term: Optional[list[str]] = None
+    long_term: Optional[list[str]] = None
 
 
 class StatusResponse(BaseModel):
@@ -39,17 +38,10 @@ class StatusResponse(BaseModel):
     short_term_goals: list[str]
     mid_term_goals: list[str]
     long_term_goals: list[str]
-    short_term_memories: list[dict] = []
-    active_task: str | None
+    active_task: Optional[str]
     iteration: int
     is_paused: bool
-    started_at: str | None
-
-
-class ShortTermMemoryUpdate(BaseModel):
-    add: list[str] | None = None
-    remove: list[int] | None = None
-    replace: list[str] | None = None
+    started_at: Optional[str]
 
 
 class BudgetResponse(BaseModel):
@@ -60,18 +52,16 @@ class BudgetResponse(BaseModel):
 
 
 class ProviderBalanceUpdate(BaseModel):
-    known_balance: float | None = None
-    tier: str | None = None  # paid, free, unknown
-    currency: str | None = None  # USD, EUR, credits, requests, etc.
-    notes: str | None = None
-    reset_spending: bool = False  # Reset tracked spending when updating balance
-    api_key: str | None = None  # Update the API key for this provider
-
+    known_balance: Optional[float] = None
+    tier: Optional[str] = None       # paid, free, unknown
+    currency: Optional[str] = None   # USD, EUR, credits, requests, etc.
+    notes: Optional[str] = None
+    reset_spending: bool = False      # Reset tracked spending when updating balance
 
 class AddProviderRequest(BaseModel):
     provider: str
-    api_key: str | None = None
-    known_balance: float | None = None
+    api_key: Optional[str] = None
+    known_balance: Optional[float] = None
     tier: str = "unknown"
-    currency: str = "USD"  # USD, EUR, credits, requests, etc.
-    notes: str | None = None
+    currency: str = "USD"            # USD, EUR, credits, requests, etc.
+    notes: Optional[str] = None

@@ -1,32 +1,26 @@
 import asyncio
 import os
 from contextlib import asynccontextmanager
-
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.sessions import SessionMiddleware
 
-from jarvis.api.auth import router as auth_router
-from jarvis.api.auth_middleware import AuthMiddleware
-from jarvis.api.routes import router as api_router
-from jarvis.api.websocket import ws_manager
-from jarvis.budget.tracker import BudgetTracker
 from jarvis.config import settings
-from jarvis.core.email_listener import EmailInboxListener
-from jarvis.core.executor import Executor
-from jarvis.core.loop import CoreLoop
-from jarvis.core.planner import Planner
-from jarvis.core.state import StateManager
-from jarvis.core.watchdog import Watchdog
-from jarvis.database import Base, async_session, engine
-from jarvis.llm.router import LLMRouter
+from jarvis.database import engine, async_session, Base
+from jarvis.observability.logger import setup_logging, get_logger, FileLogger
 from jarvis.memory.blob import BlobStorage
 from jarvis.memory.vector import VectorMemory
 from jarvis.memory.working import WorkingMemory
-from jarvis.observability.logger import FileLogger, get_logger, setup_logging
+from jarvis.budget.tracker import BudgetTracker
 from jarvis.safety.validator import SafetyValidator
 from jarvis.tools.registry import ToolRegistry
-from jarvis.version import __version__
+from jarvis.llm.router import LLMRouter
+from jarvis.core.state import StateManager
+from jarvis.core.planner import Planner
+from jarvis.core.executor import Executor
+from jarvis.core.loop import CoreLoop
+from jarvis.core.watchdog import Watchdog
+from jarvis.api.routes import router as api_router
+from jarvis.api.websocket import ws_manager
 
 setup_logging()
 log = get_logger("main")
@@ -50,10 +44,11 @@ async def lifespan(app: FastAPI):
             ("short_term_goals", "TEXT DEFAULT '[]'"),
             ("mid_term_goals", "TEXT DEFAULT '[]'"),
             ("long_term_goals", "TEXT DEFAULT '[]'"),
-            ("short_term_memories", "TEXT DEFAULT '[]'"),
         ]:
             try:
-                await conn.execute(__import__("sqlalchemy").text(f"ALTER TABLE jarvis_state ADD COLUMN {col} {coldef}"))
+                await conn.execute(
+                    __import__("sqlalchemy").text(f"ALTER TABLE jarvis_state ADD COLUMN {col} {coldef}")
+                )
                 log.info("column_added", table="jarvis_state", column=col)
             except Exception:
                 pass  # Column already exists
@@ -86,10 +81,7 @@ async def lifespan(app: FastAPI):
 
     validator = SafetyValidator()
     router = LLMRouter(budget, blob_storage=blob)
-    tools = ToolRegistry(
-        vector, validator, budget_tracker=budget, llm_router=router, blob_storage=blob, working=working
-    )
-    log.info("tools_available", tools=sorted(tools.get_tool_names()))
+    tools = ToolRegistry(vector, validator, budget_tracker=budget, llm_router=router, blob_storage=blob)
     state_manager = StateManager(async_session)
     planner = Planner(router, working, vector)
     executor = Executor(tools, blob, file_logger, session_factory=async_session)
@@ -98,21 +90,19 @@ async def lifespan(app: FastAPI):
     await _configure_git()
 
     # 4. Store in shared state for API access
-    app_state.update(
-        {
-            "blob": blob,
-            "vector": vector,
-            "working": working,
-            "budget": budget,
-            "tools": tools,
-            "router": router,
-            "state_manager": state_manager,
-            "planner": planner,
-            "executor": executor,
-            "file_logger": file_logger,
-            "session_factory": async_session,
-        }
-    )
+    app_state.update({
+        "blob": blob,
+        "vector": vector,
+        "working": working,
+        "budget": budget,
+        "tools": tools,
+        "router": router,
+        "state_manager": state_manager,
+        "planner": planner,
+        "executor": executor,
+        "file_logger": file_logger,
+        "session_factory": async_session,
+    })
 
     # 5. Try to pull a small Ollama model in the background
     ollama_provider = router.providers.get("ollama")
@@ -134,14 +124,6 @@ async def lifespan(app: FastAPI):
     app_state["core_loop"] = core_loop
     app_state["loop_task"] = loop_task
 
-    # 6b. Start email inbox listener (disabled by default — enable via EMAIL_LISTENER_ENABLED=true)
-    email_listener = EmailInboxListener(
-        enqueue_fn=core_loop.enqueue_chat,
-        interval_seconds=settings.email_listener_interval_seconds,
-    )
-    email_listener.start()
-    app_state["email_listener"] = email_listener
-
     # 7. Start watchdog
     watchdog = Watchdog(state_manager, settings.heartbeat_timeout_seconds)
     watchdog.set_loop_task(loop_task, lambda: _restart_loop(core_loop))
@@ -157,15 +139,6 @@ async def lifespan(app: FastAPI):
     core_loop.stop()
     loop_task.cancel()
     watchdog_task.cancel()
-
-    # Stop email listener
-    try:
-        email_listener = app_state.get("email_listener")
-        if email_listener:
-            await email_listener.stop()
-    except Exception as e:
-        log.warning("email_listener_stop_failed", error=str(e))
-
     await engine.dispose()
 
 
@@ -199,7 +172,7 @@ def _restart_loop(core_loop: CoreLoop):
     asyncio.create_task(core_loop.run())
 
 
-app = FastAPI(title="JARVIS", version=__version__, lifespan=lifespan)
+app = FastAPI(title="JARVIS", version="0.1.1", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -208,20 +181,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.add_middleware(SessionMiddleware, secret_key=settings.auth_secret_key)
-app.add_middleware(AuthMiddleware)
 
 app.include_router(api_router)
-app.include_router(auth_router)
 
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    if settings.auth_enabled:
-        session = websocket.scope.get("session") or {}
-        if not session.get("user"):
-            await websocket.close(code=4001)
-            return
     await ws_manager.connect(websocket)
     try:
         while True:

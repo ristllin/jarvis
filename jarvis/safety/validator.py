@@ -1,19 +1,13 @@
+import re
 import os
-
-from jarvis.observability.logger import get_logger
 from jarvis.safety.rules import IMMUTABLE_RULES
+from jarvis.observability.logger import get_logger
 
 log = get_logger("safety")
 
 BLOCKED_PATHS = [
-    "/etc/",
-    "/root/",
-    "/proc/",
-    "/sys/",
-    "/var/run/",
-    "/usr/",
-    "/bin/",
-    "/sbin/",
+    "/etc/", "/root/", "/proc/", "/sys/",
+    "/var/run/", "/usr/", "/bin/", "/sbin/",
 ]
 
 SECRET_PATTERNS = [
@@ -31,7 +25,7 @@ class SafetyValidator:
         params = action.get("parameters", {})
 
         # Check for rule violations in any text content
-        for value in params.values():
+        for key, value in params.items():
             if isinstance(value, str):
                 violations = IMMUTABLE_RULES.contains_violation(value)
                 if violations:
@@ -71,14 +65,10 @@ class SafetyValidator:
 
     def _leaks_secrets(self, code: str) -> bool:
         danger = [
-            "os.environ",
-            "os.getenv",
-            "ANTHROPIC_API_KEY",
-            "OPENAI_API_KEY",
-            "MISTRAL_API_KEY",
-            "TAVILY_API_KEY",
-            "DATABASE_URL",
-            "POSTGRES_PASSWORD",
+            "os.environ", "os.getenv",
+            "ANTHROPIC_API_KEY", "OPENAI_API_KEY",
+            "MISTRAL_API_KEY", "TAVILY_API_KEY",
+            "DATABASE_URL", "POSTGRES_PASSWORD",
         ]
         code_lower = code.lower()
         return any(d.lower() in code_lower for d in danger)

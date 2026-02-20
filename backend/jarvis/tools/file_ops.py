@@ -1,6 +1,6 @@
 import os
-
 from jarvis.tools.base import Tool, ToolResult
+
 
 ALLOWED_BASE = "/data"
 
@@ -15,7 +15,7 @@ class FileReadTool(Tool):
         if not full_path.startswith(ALLOWED_BASE):
             return ToolResult(success=False, output="", error="Path outside allowed directory")
         try:
-            with open(full_path) as f:
+            with open(full_path, "r") as f:
                 content = f.read()
             if len(content) > 50000:
                 content = content[:50000] + "\n\n[...truncated...]"

@@ -1,10 +1,12 @@
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
-
 import pytest
-from jarvis.config import settings
-from jarvis.core.loop import CoreLoop
+import pytest_asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 from jarvis.core.state import StateManager
+from jarvis.core.loop import CoreLoop
+from jarvis.core.planner import Planner
+from jarvis.core.executor import Executor
+from jarvis.config import settings
 
 
 @pytest.mark.asyncio
