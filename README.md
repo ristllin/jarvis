@@ -155,6 +155,74 @@ ngrok runs automatically when you start the stack. The dashboard is exposed at `
 
 ## Repository Structure & Git Management
 
+### Diagram: Code flow & deploy paths
+
+```mermaid
+flowchart TB
+    subgraph Creator["👤 Creator (you)"]
+        A[jarvis/]
+        B[backend/jarvis/]
+        C[Your Git origin]
+    end
+
+    subgraph Build["Build pipeline"]
+        D[Docker image]
+        E[data/code/backend/]
+    end
+
+    subgraph Container["Running container"]
+        F["/app/ (live code)"]
+    end
+
+    subgraph JARVIS["🤖 JARVIS"]
+        G[self_modify edits]
+        H[JARVIS Git / GITHUB_REPO]
+    end
+
+    A -->|"build.sh sync"| B
+    B -->|"COPY backend/"| D
+    D -->|"entrypoint: image to data"| E
+    E -->|"entrypoint: restore"| F
+    F -->|"dual-write"| E
+    G --> F
+    G --> E
+    E -->|"commit + push"| H
+
+    C -.->|"git push"| C
+    E -.->|"rsync (manual)"| E
+    B -.->|"rsync backend to data"| E
+```
+
+### Diagram: Two git repos
+
+```mermaid
+flowchart LR
+    subgraph CreatorRepo["Creator's repo"]
+        direction TB
+        CR[ristllin/jarvis]
+        CL[Local git]
+        CL -->|push| CR
+    end
+
+    subgraph JARVISRepo["JARVIS's backup repo"]
+        direction TB
+        JR[jarvisbotgd-dev/jarvis]
+        JL["data/code/backend/.git"]
+        JL -->|push| JR
+    end
+
+    subgraph Running["What actually runs"]
+        R["/app/ from data/code/"]
+    end
+
+    CL -.->|"edit, commit"| CL
+    R -->|"self_modify"| JL
+    JL -->|"restore on boot"| R
+
+    CR -.->|"pull, merge (optional)"| CL
+    JR -.->|"pull JARVIS changes"| CL
+```
+
 ### Why `jarvis/` and `backend/jarvis/` both exist
 
 **Historical duplication.** The Dockerfile copies `backend/` into the image, so `backend/` must contain the Python package. At some point a top-level `jarvis/` was added (possibly for local dev or as a "canonical" source). `build.sh` syncs `jarvis/` → `backend/jarvis/` before each build.
