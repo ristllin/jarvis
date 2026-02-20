@@ -69,3 +69,9 @@ All notable changes from JARVIS self-modifications.
 ### Files changed
   - jarvis/tools/crypto_trading.py
   - tests/test_crypto_trading.py
+## [0.2.4] - 2026-02-20
+
+**Commit:** Deploy crypto_trading tool v0.2.3
+
+### Files changed
+
